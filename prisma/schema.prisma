@@ -15,7 +15,11 @@ model User {
   expenseItems        ExpenseItem[]
   expenseRecords      ExpenseRecord[]
   investments         Investment[]
+  investmentTypes     InvestmentType[]
   investmentSnapshots InvestmentSnapshot[]
+  incomeSources       IncomeSource[]
+  incomeHistory       IncomeHistory[]
+  budgetHistory       BudgetHistory[]
 }
 
 model Category {
@@ -33,38 +37,44 @@ model ExpenseItem {
   id            String          @id @default(uuid())
   name          String
   monthlyBudget Int
+  defaultDay    Int             @default(1)
   active        Boolean         @default(true)
+  recurring     Boolean         @default(false)
   categoryId    String
   userId        String
   category      Category        @relation(fields: [categoryId], references: [id])
   user          User            @relation(fields: [userId], references: [id])
   records       ExpenseRecord[]
+  budgetHistory BudgetHistory[]
 }
 
 model ExpenseRecord {
   id        String      @id @default(uuid())
+  day       Int         @default(1)
   month     Int
   year      Int
   realValue Int
+  comment   String      @default("")
   itemId    String
   userId    String
   item      ExpenseItem @relation(fields: [itemId], references: [id])
   user      User        @relation(fields: [userId], references: [id])
-
-  @@unique([itemId, month, year])
 }
 
 model Investment {
   id              String               @id @default(uuid())
   name            String
-  type            String
+  typeId          String
+  type            InvestmentType       @relation(fields: [typeId], references: [id])
   color           String
+  createdAt       DateTime             @default(now())
   investedCapital Int
   active          Boolean              @default(true)
   userId          String
   user            User                 @relation(fields: [userId], references: [id])
   snapshots       InvestmentSnapshot[]
 }
+
 
 model InvestmentSnapshot {
   id           String     @id @default(uuid())
@@ -78,4 +88,50 @@ model InvestmentSnapshot {
   user         User       @relation(fields: [userId], references: [id])
 
   @@unique([investmentId, month, year])
+}
+
+model InvestmentType {
+  id          String       @id @default(uuid())
+  name        String
+  userId      String
+  user        User         @relation(fields: [userId], references: [id])
+  investments Investment[]
+
+  @@unique([name, userId])
+}
+
+model IncomeSource {
+  id      String          @id @default(uuid())
+  name    String
+  userId  String
+  user    User            @relation(fields: [userId], references: [id])
+  history IncomeHistory[]
+
+  @@unique([name, userId])
+}
+
+model IncomeHistory {
+  id             String       @id @default(uuid())
+  amount         Int
+  effectiveMonth Int
+  effectiveYear  Int
+  sourceId       String
+  userId         String
+  source         IncomeSource @relation(fields: [sourceId], references: [id])
+  user           User         @relation(fields: [userId], references: [id])
+
+  @@unique([sourceId, effectiveMonth, effectiveYear])
+}
+
+model BudgetHistory {
+  id             String      @id @default(uuid())
+  amount         Int
+  effectiveMonth Int
+  effectiveYear  Int
+  itemId         String
+  userId         String
+  item           ExpenseItem @relation(fields: [itemId], references: [id])
+  user           User        @relation(fields: [userId], references: [id])
+
+  @@unique([itemId, effectiveMonth, effectiveYear])
 }

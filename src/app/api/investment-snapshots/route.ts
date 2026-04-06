@@ -7,11 +7,16 @@ export async function GET(req: NextRequest) {
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { searchParams } = new URL(req.url);
-  const year = parseInt(searchParams.get("year") || "2025");
+  const yearParam = searchParams.get("year");
+  
+  const whereClause: any = { userId: user.id };
+  if (yearParam && yearParam !== "all") {
+    whereClause.year = parseInt(yearParam);
+  }
 
   const snapshots = await prisma.investmentSnapshot.findMany({
-    where: { userId: user.id, year },
-    orderBy: [{ month: "asc" }],
+    where: whereClause,
+    orderBy: [{ year: "asc" }, { month: "asc" }],
   });
   return NextResponse.json(snapshots);
 }

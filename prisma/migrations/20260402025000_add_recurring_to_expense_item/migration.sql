@@ -1,0 +1,1 @@
+ALTER TABLE "ExpenseItem" ADD COLUMN "recurring" BOOLEAN NOT NULL DEFAULT false;

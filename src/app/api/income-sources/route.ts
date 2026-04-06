@@ -6,12 +6,14 @@ export async function GET() {
   const user = await getAuthUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const investments = await prisma.investment.findMany({
-    where: { userId: user.id, active: true },
-    include: { type: true },
-    orderBy: { createdAt: "asc" },
+  const sources = await prisma.incomeSource.findMany({
+    where: { userId: user.id },
+    include: {
+      history: { orderBy: [{ effectiveYear: "asc" }, { effectiveMonth: "asc" }] },
+    },
+    orderBy: { name: "asc" },
   });
-  return NextResponse.json(investments);
+  return NextResponse.json(sources);
 }
 
 export async function POST(req: NextRequest) {
@@ -19,26 +21,24 @@ export async function POST(req: NextRequest) {
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await req.json();
-  const investment = await prisma.investment.create({
+  const source = await prisma.incomeSource.create({
     data: {
       name: body.name,
-      typeId: body.typeId,
-      color: body.color,
-      investedCapital: body.investedCapital,
       userId: user.id,
-      snapshots: {
+      history: {
         create: {
-          month: body.month,
-          year: body.year,
-          currentValue: body.investedCapital,
-          contribution: 0,
+          amount: body.amount,
+          effectiveMonth: body.effectiveMonth,
+          effectiveYear: body.effectiveYear,
           userId: user.id,
-        }
-      }
+        },
+      },
     },
-    include: { type: true },
+    include: {
+      history: { orderBy: [{ effectiveYear: "asc" }, { effectiveMonth: "asc" }] },
+    },
   });
-  return NextResponse.json(investment);
+  return NextResponse.json(source);
 }
 
 export async function DELETE(req: NextRequest) {
@@ -49,9 +49,7 @@ export async function DELETE(req: NextRequest) {
   const id = searchParams.get("id");
   if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
 
-  await prisma.investment.update({
-    where: { id },
-    data: { active: false },
-  });
+  await prisma.incomeHistory.deleteMany({ where: { sourceId: id, userId: user.id } });
+  await prisma.incomeSource.delete({ where: { id, userId: user.id } });
   return NextResponse.json({ ok: true });
 }

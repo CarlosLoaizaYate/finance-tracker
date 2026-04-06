@@ -13,17 +13,18 @@ const CATS_SEED = [
 ];
 
 const ITEMS_SEED = [
-  { name: "Netflix",          cat: "streaming", budget: 40000 },
-  { name: "Spotify",          cat: "streaming", budget: 30000 },
-  { name: "Crunchyroll",      cat: "streaming", budget: 20000 },
-  { name: "Claro 1",          cat: "telefonia", budget: 55000 },
-  { name: "Movistar",         cat: "telefonia", budget: 150000 },
-  { name: "Apartamento",      cat: "vivienda",  budget: 770000 },
-  { name: "Administración",   cat: "vivienda",  budget: 200000 },
-  { name: "TC Nu",            cat: "credito",   budget: 1000000 },
-  { name: "Seguro Moto",      cat: "seguros",   budget: 100000 },
-  { name: "Compensar",        cat: "salud",     budget: 600000 },
-  { name: "Salidas / Comidas",cat: "salidas",   budget: 500000 },
+  { name: "Netflix",              cat: "streaming", budget: 40000,   recurring: true,  defaultDay: 1  },
+  { name: "Spotify",              cat: "streaming", budget: 30000,   recurring: true,  defaultDay: 1  },
+  { name: "Crunchyroll",          cat: "streaming", budget: 20000,   recurring: true,  defaultDay: 1  },
+  { name: "Claro 1",              cat: "telefonia", budget: 55000,   recurring: true,  defaultDay: 5  },
+  { name: "Movistar",             cat: "telefonia", budget: 150000,  recurring: true,  defaultDay: 5  },
+  { name: "Apartamento",          cat: "vivienda",  budget: 770000,  recurring: false, defaultDay: 1  },
+  { name: "Administración",       cat: "vivienda",  budget: 200000,  recurring: true,  defaultDay: 1  },
+  { name: "Crédito Hipotecario",  cat: "vivienda",  budget: 1200000, recurring: true,  defaultDay: 5  },
+  { name: "TC Nu",                cat: "credito",   budget: 1000000, recurring: true,  defaultDay: 15 },
+  { name: "Seguro Moto",          cat: "seguros",   budget: 100000,  recurring: false, defaultDay: 1  },
+  { name: "Compensar",            cat: "salud",     budget: 600000,  recurring: false, defaultDay: 1  },
+  { name: "Salidas / Comidas",    cat: "salidas",   budget: 500000,  recurring: false, defaultDay: 1  },
 ];
 
 const INV_SEED = [
@@ -57,16 +58,23 @@ export async function POST() {
     catMap[c.name] = cat.id;
   }
 
-  // Create expense items
+  // Upsert expense items (updates recurring flag on existing items)
   for (const item of ITEMS_SEED) {
     const existing = await prisma.expenseItem.findFirst({
       where: { name: item.name, userId: user.id },
     });
-    if (!existing) {
+    if (existing) {
+      await prisma.expenseItem.update({
+        where: { id: existing.id },
+        data: { recurring: item.recurring, monthlyBudget: item.budget, defaultDay: item.defaultDay },
+      });
+    } else {
       await prisma.expenseItem.create({
         data: {
           name: item.name,
           monthlyBudget: item.budget,
+          defaultDay: item.defaultDay,
+          recurring: item.recurring,
           categoryId: catMap[item.cat],
           userId: user.id,
         },
@@ -83,10 +91,19 @@ export async function POST() {
     if (existing) {
       invMap[inv.name] = existing.id;
     } else {
+      let invType = await prisma.investmentType.findUnique({
+        where: { name_userId: { name: inv.type, userId: user.id } }
+      });
+      if (!invType) {
+        invType = await prisma.investmentType.create({
+          data: { name: inv.type, userId: user.id }
+        });
+      }
+
       const created = await prisma.investment.create({
         data: {
           name: inv.name,
-          type: inv.type,
+          typeId: invType.id,
           color: inv.color,
           investedCapital: inv.invested,
           userId: user.id,
