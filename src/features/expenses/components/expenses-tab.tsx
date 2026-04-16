@@ -427,9 +427,117 @@ function InlineCategorySelect({
   );
 }
 
-// ─── Historical section (bottom) ────────────────────────────────────────────
+// ─── Histórico mensual ───────────────────────────────────────────────────────
 
-function HistorySection({
+function MonthlyHistorySection({
+  items, catById,
+}: {
+  items: ExpenseItem[];
+  catById: Record<string, Category>;
+}) {
+  const now = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const [histFrom, setHistFrom] = useState(`${now.getFullYear() - 1}-${pad(now.getMonth() + 1)}`);
+  const [histTo,   setHistTo]   = useState(`${now.getFullYear()}-${pad(now.getMonth() + 1)}`);
+
+  const parse = (s: string) => { const [y, m] = s.split("-").map(Number); return { year: y, month: m - 1 }; };
+  const from  = parse(histFrom);
+  const to    = parse(histTo);
+  const valid = from.year < to.year || (from.year === to.year && from.month <= to.month);
+
+  const { data: histRecords = [] } = useExpenseRecordsRange(from.month, from.year, to.month, to.year);
+
+  const monthSummaries = useMemo(() => {
+    if (!valid) return [];
+    const itemById = Object.fromEntries(items.map((it) => [it.id, it]));
+    const recsByMonth: Record<string, ExpenseRecord[]> = {};
+    histRecords.forEach((r) => { (recsByMonth[`${r.year}-${r.month}`] ??= []).push(r); });
+    const rows: { month: number; year: number }[] = [];
+    let m = from.month, y = from.year;
+    while (y < to.year || (y === to.year && m <= to.month)) {
+      rows.push({ month: m, year: y });
+      m++; if (m > 11) { m = 0; y++; }
+    }
+    return rows.map(({ month, year }) => {
+      const recs  = recsByMonth[`${year}-${month}`] ?? [];
+      const total = recs.reduce((s, r) => s + r.realValue, 0);
+      const byCat: Record<string, number> = {};
+      recs.forEach((r) => {
+        const it = itemById[r.itemId];
+        if (it) byCat[it.categoryId] = (byCat[it.categoryId] ?? 0) + r.realValue;
+      });
+      return { month, year, total, byCat, count: recs.length };
+    });
+  }, [histRecords, valid, from.month, from.year, to.month, to.year, items]);
+
+  const cats = useMemo(() => Object.values(catById), [catById]);
+
+  return (
+    <div style={{ background: "#fff", borderRadius: 12, boxShadow: "0 1px 4px #0001", overflow: "hidden" }}>
+      <div style={{
+        display: "flex", justifyContent: "space-between", alignItems: "center",
+        padding: "12px 16px", borderBottom: "1px solid #f3f4f6", flexWrap: "wrap", gap: 10,
+      }}>
+        <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#111827" }}>Histórico Mensual</h3>
+        <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <label style={{ fontSize: 12, fontWeight: 600, color: "#6b7280" }}>Desde:</label>
+            <input type="month" value={histFrom} onChange={(e) => setHistFrom(e.target.value)}
+              style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 12 }} />
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <label style={{ fontSize: 12, fontWeight: 600, color: "#6b7280" }}>Hasta:</label>
+            <input type="month" value={histTo} onChange={(e) => setHistTo(e.target.value)}
+              style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 12 }} />
+          </div>
+        </div>
+      </div>
+
+      {!valid && <p style={{ padding: "16px", fontSize: 13, color: "#9ca3af" }}>Seleccioná un rango válido.</p>}
+      {valid && monthSummaries.every((s) => s.count === 0) && (
+        <p style={{ padding: "16px", fontSize: 13, color: "#9ca3af" }}>Sin registros en ese rango.</p>
+      )}
+      {valid && monthSummaries.some((s) => s.count > 0) && (
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+            <thead>
+              <tr style={{ background: "#f9fafb" }}>
+                <th style={{ textAlign: "left",  padding: "8px 14px", fontWeight: 600, color: "#374151" }}>Mes</th>
+                <th style={{ textAlign: "right", padding: "8px 10px", fontWeight: 600, color: "#374151" }}>Total</th>
+                <th style={{ textAlign: "right", padding: "8px 10px", fontWeight: 600, color: "#9ca3af" }}>Registros</th>
+                {cats.map((c) => (
+                  <th key={c.id} style={{ textAlign: "right", padding: "8px 10px", fontWeight: 600, color: c.color, whiteSpace: "nowrap" }}>
+                    {c.name}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {monthSummaries.filter((s) => s.count > 0).map(({ month, year, total, byCat, count }) => (
+                <tr key={`${year}-${month}`} style={{ borderTop: "1px solid #f3f4f6" }}>
+                  <td style={{ padding: "7px 14px", fontWeight: 600, color: "#374151", whiteSpace: "nowrap" }}>
+                    {MONTHS[month]} {year}
+                  </td>
+                  <td style={{ padding: "7px 10px", textAlign: "right", fontWeight: 700, color: "#111827" }}>{fmt(total)}</td>
+                  <td style={{ padding: "7px 10px", textAlign: "right", color: "#9ca3af" }}>{count}</td>
+                  {cats.map((c) => (
+                    <td key={c.id} style={{ padding: "7px 10px", textAlign: "right", color: "#6b7280" }}>
+                      {byCat[c.id] ? fmt(byCat[c.id]) : "—"}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Histórico anual ─────────────────────────────────────────────────────────
+
+function YearlyHistorySection({
   items, catById,
 }: {
   items: ExpenseItem[];
@@ -440,9 +548,7 @@ function HistorySection({
   const [toYear,   setToYear]   = useState(now.getFullYear());
   const valid = fromYear <= toYear;
 
-  const { data: histRecords = [] } = useExpenseRecordsRange(
-    0, fromYear, 11, toYear
-  );
+  const { data: histRecords = [] } = useExpenseRecordsRange(0, fromYear, 11, toYear);
 
   const yearSummaries = useMemo(() => {
     if (!valid) return [];
@@ -472,7 +578,7 @@ function HistorySection({
         display: "flex", justifyContent: "space-between", alignItems: "center",
         padding: "12px 16px", borderBottom: "1px solid #f3f4f6", flexWrap: "wrap", gap: 10,
       }}>
-        <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#111827" }}>Histórico de Egresos</h3>
+        <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#111827" }}>Histórico Anual</h3>
         <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <label style={{ fontSize: 12, fontWeight: 600, color: "#6b7280" }}>Desde:</label>
@@ -491,14 +597,10 @@ function HistorySection({
         </div>
       </div>
 
-      {!valid && (
-        <p style={{ padding: "16px", fontSize: 13, color: "#9ca3af" }}>Seleccioná un rango válido.</p>
-      )}
-
+      {!valid && <p style={{ padding: "16px", fontSize: 13, color: "#9ca3af" }}>Seleccioná un rango válido.</p>}
       {valid && yearSummaries.every((s) => s.count === 0) && (
         <p style={{ padding: "16px", fontSize: 13, color: "#9ca3af" }}>Sin registros en ese rango.</p>
       )}
-
       {valid && yearSummaries.some((s) => s.count > 0) && (
         <div style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
@@ -518,9 +620,7 @@ function HistorySection({
               {yearSummaries.filter((s) => s.count > 0).map(({ year, total, byCat, count }) => (
                 <tr key={year} style={{ borderTop: "1px solid #f3f4f6" }}>
                   <td style={{ padding: "7px 14px", fontWeight: 700, color: "#374151" }}>{year}</td>
-                  <td style={{ padding: "7px 10px", textAlign: "right", fontWeight: 700, color: "#111827" }}>
-                    {fmt(total)}
-                  </td>
+                  <td style={{ padding: "7px 10px", textAlign: "right", fontWeight: 700, color: "#111827" }}>{fmt(total)}</td>
                   <td style={{ padding: "7px 10px", textAlign: "right", color: "#9ca3af" }}>{count}</td>
                   {cats.map((c) => (
                     <td key={c.id} style={{ padding: "7px 10px", textAlign: "right", color: "#6b7280" }}>
@@ -589,8 +689,10 @@ export default function ExpensesTab() {
         records={monthRecords}
       />
 
-      {/* ── Historical section ── */}
-      <HistorySection items={dbItems} catById={catById} />
+      {/* ── Historical sections ── */}
+      <MonthlyHistorySection items={dbItems} catById={catById} />
+      <div style={{ marginTop: 20 }} />
+      <YearlyHistorySection items={dbItems} catById={catById} />
     </>
   );
 }
