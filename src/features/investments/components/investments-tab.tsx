@@ -33,14 +33,10 @@ export default function InvestmentsTab() {
   const [showForm, setShowForm] = useState(false);
   const [newInv, setNewInv] = useState({ name: "", typeId: "", invested: 0, color: "#6366f1" });
 
-  // Chart line visibility: "Total Value" | "Invested" | inv.id
-  const [visibleLines, setVisibleLines] = useState<Set<string>>(
-    () => new Set(["Total Value", "Invested"])
-  );
-
-  // Sync new investments into visibleLines
+  // Hidden lines — empty set means everything is visible
+  const [hiddenLines, setHiddenLines] = useState<Set<string>>(new Set());
   const toggleLine = (key: string) =>
-    setVisibleLines((prev) => {
+    setHiddenLines((prev) => {
       const next = new Set(prev);
       next.has(key) ? next.delete(key) : next.add(key);
       return next;
@@ -300,59 +296,74 @@ export default function InvestmentsTab() {
         </table>
       </div>
 
-      {/* Evolution chart */}
-      {chartData.length > 0 && (
-        <div style={{ background: "#fff", borderRadius: 12, padding: 16, boxShadow: "0 1px 4px #0001" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
-            <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700 }}>Portfolio Evolution</h3>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <label style={{ fontSize: 11, fontWeight: 600, color: "#6b7280" }}>Desde:</label>
-                <input type="month" value={chartFrom} onChange={(e) => setChartFrom(e.target.value)}
-                  style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 12 }} />
-              </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <label style={{ fontSize: 11, fontWeight: 600, color: "#6b7280" }}>Hasta:</label>
-                <input type="month" value={chartTo} onChange={(e) => setChartTo(e.target.value)}
-                  style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 12 }} />
-              </div>
+      {/* Portfolio Evolution chart */}
+      <div style={{ background: "#fff", borderRadius: 12, padding: 16, boxShadow: "0 1px 4px #0001" }}>
+        {/* Header + date range */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, flexWrap: "wrap", gap: 8 }}>
+          <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700 }}>Portfolio Evolution</h3>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <label style={{ fontSize: 11, fontWeight: 600, color: "#6b7280" }}>Desde:</label>
+              <input type="month" value={chartFrom} onChange={(e) => setChartFrom(e.target.value)}
+                style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 12 }} />
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <label style={{ fontSize: 11, fontWeight: 600, color: "#6b7280" }}>Hasta:</label>
+              <input type="month" value={chartTo} onChange={(e) => setChartTo(e.target.value)}
+                style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 12 }} />
             </div>
           </div>
-          <ResponsiveContainer width="100%" height={280}>
+        </div>
+
+        {/* Line toggles */}
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 14 }}>
+          {[
+            { key: "Total Value", name: "Valor Total", color: "#7c3aed" },
+            { key: "Invested",    name: "Invertido",   color: "#9ca3af" },
+            ...invs.map((inv) => ({ key: inv.id, name: inv.name, color: inv.color })),
+          ].map(({ key, name, color }) => {
+            const visible = !hiddenLines.has(key);
+            return (
+              <button key={key} onClick={() => toggleLine(key)} style={{
+                padding: "3px 12px", borderRadius: 20,
+                border: `2px solid ${color}`,
+                background: visible ? color : "transparent",
+                color: visible ? "#fff" : color,
+                fontSize: 11, fontWeight: 600, cursor: "pointer",
+                transition: "all .15s",
+              }}>
+                {name}
+              </button>
+            );
+          })}
+        </div>
+
+        {chartData.length === 0 ? (
+          <p style={{ fontSize: 13, color: "#9ca3af", textAlign: "center", padding: "32px 0" }}>
+            Sin datos en el rango seleccionado.
+          </p>
+        ) : (
+          <ResponsiveContainer width="100%" height={300}>
             <LineChart data={chartData}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="mes" tick={{ fontSize: 11 }} />
               <YAxis tick={{ fontSize: 10 }} tickFormatter={(v) => `${(Number(v) / 1e6).toFixed(1)}M`} />
-              <Tooltip formatter={(v: any) => fmt(Number(v))} />
-              <Legend wrapperStyle={{ fontSize: 11 }} />
-              <Line type="monotone" dataKey="Total Value" stroke="#7c3aed" strokeWidth={2} />
-              <Line type="monotone" dataKey="Invested" stroke="#9ca3af" strokeDasharray="5 5" />
+              <Tooltip formatter={(v: unknown) => fmt(Number(v))} />
+              <Line type="monotone" dataKey="Total Value" name="Valor Total"
+                stroke="#7c3aed" strokeWidth={2} dot={{ r: 2 }}
+                hide={hiddenLines.has("Total Value")} />
+              <Line type="monotone" dataKey="Invested" name="Invertido"
+                stroke="#9ca3af" strokeDasharray="5 5" strokeWidth={2} dot={{ r: 2 }}
+                hide={hiddenLines.has("Invested")} />
               {invs.map((inv) => (
                 <Line key={inv.id} type="monotone" dataKey={inv.id} name={inv.name}
-                  stroke={inv.color} strokeWidth={1.5} dot={{ r: 2 }} />
+                  stroke={inv.color} strokeWidth={1.5} dot={{ r: 2 }}
+                  hide={hiddenLines.has(inv.id)} />
               ))}
             </LineChart>
           </ResponsiveContainer>
-        </div>
-      )}
-
-      {/* Returns Chart */}
-      {chartData.length > 0 && (
-        <div style={{ background: "#fff", borderRadius: 12, padding: 16, boxShadow: "0 1px 4px #0001", marginTop: 16 }}>
-          <h3 style={{ margin: "0 0 12px", fontSize: 14, fontWeight: 700 }}>Portfolio Returns (Gains/Losses)</h3>
-          <ResponsiveContainer width="100%" height={280}>
-            <LineChart data={chartData}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="mes" tick={{ fontSize: 11 }} />
-              <YAxis tick={{ fontSize: 10 }} tickFormatter={(v) => `${(Number(v) / 1e6).toFixed(1)}M`} />
-              <Tooltip formatter={(v: any) => fmt(Number(v))} />
-              <Legend wrapperStyle={{ fontSize: 11 }} />
-              <Line type="monotone" dataKey="Invested" name="Invested" stroke="#9ca3af" strokeWidth={2} strokeDasharray="5 5" dot={{ r: 2 }} />
-              <Line type="monotone" dataKey="Total Value" name="Total Value" stroke="#7c3aed" strokeWidth={2} dot={{ r: 2 }} />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-      )}
+        )}
+      </div>
     </>
   );
 }
