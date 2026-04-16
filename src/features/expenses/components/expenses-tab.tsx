@@ -341,25 +341,34 @@ function HistorySection({
   const [histFrom, setHistFrom] = useState(`${now.getFullYear() - 1}-${fmt2(now.getMonth() + 1)}`);
   const [histTo,   setHistTo]   = useState(`${now.getFullYear()}-${fmt2(now.getMonth() + 1)}`);
 
-  // Parse "YYYY-MM" input type=month → 0-based month
   const parseMonthInput = (s: string) => {
     const [y, m] = s.split("-").map(Number);
     return { year: y, month: m - 1 };
   };
 
-  const from = parseMonthInput(histFrom);
-  const to   = parseMonthInput(histTo);
+  const from  = parseMonthInput(histFrom);
+  const to    = parseMonthInput(histTo);
   const valid = from.year < to.year || (from.year === to.year && from.month <= to.month);
 
   const { data: histRecords = [] } = useExpenseRecordsRange(
     from.month, from.year, to.month, to.year
   );
 
-  // Build month-by-month summary
-  const monthSummaries = useMemo(() => {
+  const itemById = useMemo(
+    () => Object.fromEntries(items.map((it) => [it.id, it])),
+    [items]
+  );
+
+  // Group records by month, sorted by day then concept name
+  const monthGroups = useMemo(() => {
     if (!valid) return [];
 
-    // Generate month list
+    const grouped: Record<string, ExpenseRecord[]> = {};
+    histRecords.forEach((r) => {
+      const k = `${r.year}-${String(r.month).padStart(2, "0")}`;
+      (grouped[k] ??= []).push(r);
+    });
+
     const months: { month: number; year: number }[] = [];
     let m = from.month, y = from.year;
     while (y < to.year || (y === to.year && m <= to.month)) {
@@ -367,33 +376,28 @@ function HistorySection({
       m++; if (m > 11) { m = 0; y++; }
     }
 
-    // Group records
-    const recsByMonth: Record<string, ExpenseRecord[]> = {};
-    histRecords.forEach((r) => {
-      const k = `${r.month}-${r.year}`;
-      (recsByMonth[k] ??= []).push(r);
-    });
+    return months
+      .map(({ month, year }) => {
+        const k    = `${year}-${String(month).padStart(2, "0")}`;
+        const recs = (grouped[k] ?? []).slice().sort((a, b) => {
+          const dayDiff = a.day - b.day;
+          if (dayDiff !== 0) return dayDiff;
+          return (itemById[a.itemId]?.name ?? "").localeCompare(itemById[b.itemId]?.name ?? "");
+        });
+        const total = recs.reduce((s, r) => s + r.realValue, 0);
+        return { month, year, recs, total };
+      })
+      .filter((g) => g.recs.length > 0);
+  }, [histRecords, valid, from.month, from.year, to.month, to.year, itemById]);
 
-    // Aggregate per month per category
-    const cats = Object.values(catById);
-
-    return months.map(({ month, year }) => {
-      const recs = recsByMonth[`${month}-${year}`] ?? [];
-      const total = recs.reduce((s, r) => s + r.realValue, 0);
-      const byCat: Record<string, number> = {};
-      recs.forEach((r) => {
-        const it = items.find((x) => x.id === r.itemId);
-        if (it) byCat[it.categoryId] = (byCat[it.categoryId] ?? 0) + r.realValue;
-      });
-      return { month, year, total, byCat, count: recs.length };
-    });
-  }, [histRecords, valid, from.month, from.year, to.month, to.year, catById, items]);
-
-  const cats = useMemo(() => Object.values(catById), [catById]);
+  const grandTotal = useMemo(
+    () => monthGroups.reduce((s, g) => s + g.total, 0),
+    [monthGroups]
+  );
 
   return (
     <div style={{ background: "#fff", borderRadius: 12, boxShadow: "0 1px 4px #0001", overflow: "hidden" }}>
-      {/* History header */}
+      {/* Header */}
       <div style={{
         display: "flex", justifyContent: "space-between", alignItems: "center",
         padding: "12px 16px", borderBottom: "1px solid #f3f4f6", flexWrap: "wrap", gap: 10,
@@ -417,47 +421,79 @@ function HistorySection({
         <p style={{ padding: "16px", fontSize: 13, color: "#9ca3af" }}>Seleccioná un rango válido.</p>
       )}
 
-      {valid && monthSummaries.length > 0 && (
+      {valid && monthGroups.length === 0 && (
+        <p style={{ padding: "16px", fontSize: 13, color: "#9ca3af" }}>Sin registros en ese rango.</p>
+      )}
+
+      {valid && monthGroups.length > 0 && (
         <div style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
             <thead>
-              <tr style={{ background: "#f9fafb" }}>
-                <th style={{ textAlign: "left", padding: "8px 14px", fontWeight: 600, color: "#374151" }}>Mes</th>
-                <th style={{ textAlign: "right", padding: "8px 10px", fontWeight: 600, color: "#374151" }}>Total</th>
-                <th style={{ textAlign: "right", padding: "8px 10px", fontWeight: 600, color: "#9ca3af" }}>Registros</th>
-                {cats.map((c) => (
-                  <th key={c.id} style={{ textAlign: "right", padding: "8px 10px", fontWeight: 600, color: c.color, whiteSpace: "nowrap" }}>
-                    {c.name}
-                  </th>
-                ))}
+              <tr style={{ background: "#f9fafb", position: "sticky", top: 0 }}>
+                <th style={{ textAlign: "center", padding: "8px 10px", fontWeight: 600, color: "#6366f1", width: 50 }}>Día</th>
+                <th style={{ textAlign: "left",   padding: "8px 12px", fontWeight: 600, color: "#374151" }}>Concepto</th>
+                <th style={{ textAlign: "left",   padding: "8px 10px", fontWeight: 600, color: "#374151" }}>Categoría</th>
+                <th style={{ textAlign: "left",   padding: "8px 10px", fontWeight: 600, color: "#9ca3af" }}>Comentario</th>
+                <th style={{ textAlign: "right",  padding: "8px 10px", fontWeight: 600, color: "#374151" }}>Monto</th>
               </tr>
             </thead>
             <tbody>
-              {monthSummaries.map(({ month, year, total, byCat, count }) => (
-                <tr key={`${month}-${year}`} style={{ borderTop: "1px solid #f3f4f6" }}>
-                  <td style={{ padding: "7px 14px", fontWeight: 600, color: "#374151", whiteSpace: "nowrap" }}>
-                    {MONTHS[month]} {year}
-                  </td>
-                  <td style={{ padding: "7px 10px", textAlign: "right", fontWeight: 700, color: total > 0 ? "#111827" : "#9ca3af" }}>
-                    {total > 0 ? fmt(total) : "—"}
-                  </td>
-                  <td style={{ padding: "7px 10px", textAlign: "right", color: "#9ca3af" }}>
-                    {count}
-                  </td>
-                  {cats.map((c) => (
-                    <td key={c.id} style={{ padding: "7px 10px", textAlign: "right", color: "#6b7280" }}>
-                      {byCat[c.id] ? fmt(byCat[c.id]) : "—"}
+              {monthGroups.map(({ month, year, recs, total }) => (
+                <>
+                  {/* Month header row */}
+                  <tr key={`h-${month}-${year}`} style={{ background: "#f0f9ff", borderTop: "2px solid #e0e7ff" }}>
+                    <td colSpan={4} style={{ padding: "6px 12px", fontWeight: 700, fontSize: 13, color: "#3730a3" }}>
+                      {MONTHS[month]} {year}
                     </td>
-                  ))}
-                </tr>
+                    <td style={{ padding: "6px 10px", textAlign: "right", fontWeight: 800, fontSize: 13, color: "#3730a3" }}>
+                      {fmt(total)}
+                    </td>
+                  </tr>
+
+                  {/* Individual records */}
+                  {recs.map((rec) => {
+                    const it  = itemById[rec.itemId];
+                    const cat = it ? catById[it.categoryId] : undefined;
+                    return (
+                      <tr key={rec.id} style={{ borderTop: "1px solid #f3f4f6" }}>
+                        <td style={{ textAlign: "center", padding: "5px 10px", color: "#6366f1", fontWeight: 600 }}>
+                          {rec.day}
+                        </td>
+                        <td style={{ padding: "5px 12px", color: "#111827", fontWeight: 500 }}>
+                          {it?.name ?? "—"}
+                        </td>
+                        <td style={{ padding: "5px 10px" }}>
+                          {cat ? (
+                            <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                              <span style={{ width: 7, height: 7, borderRadius: 2, background: cat.color }} />
+                              <span style={{ color: "#6b7280" }}>{cat.name}</span>
+                            </span>
+                          ) : "—"}
+                        </td>
+                        <td style={{ padding: "5px 10px", color: rec.comment ? "#374151" : "#d1d5db", fontStyle: rec.comment ? "normal" : "italic" }}>
+                          {rec.comment || "—"}
+                        </td>
+                        <td style={{ padding: "5px 10px", textAlign: "right", color: "#374151", fontWeight: 600 }}>
+                          {fmt(rec.realValue)}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </>
               ))}
+
+              {/* Grand total */}
+              <tr style={{ borderTop: "2px solid #e5e7eb", background: "#f9fafb" }}>
+                <td colSpan={4} style={{ padding: "8px 12px", fontWeight: 700, fontSize: 13, color: "#374151" }}>
+                  Total del período
+                </td>
+                <td style={{ padding: "8px 10px", textAlign: "right", fontWeight: 800, fontSize: 14, color: "#111827" }}>
+                  {fmt(grandTotal)}
+                </td>
+              </tr>
             </tbody>
           </table>
         </div>
-      )}
-
-      {valid && monthSummaries.length === 0 && (
-        <p style={{ padding: "16px", fontSize: 13, color: "#9ca3af" }}>Sin registros en ese rango.</p>
       )}
     </div>
   );
