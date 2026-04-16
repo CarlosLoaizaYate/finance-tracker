@@ -237,7 +237,6 @@ function ActiveMonthTable({
             )}
             {sorted.map((rec) => {
               const it     = itemById[rec.itemId];
-              const cat    = it ? catById[it.categoryId] : undefined;
               const budget = it ? effectiveBudget(it, month, year) : 0;
               return (
                 <tr key={rec.id} style={{ borderTop: "1px solid #f3f4f6" }}>
@@ -251,16 +250,17 @@ function ActiveMonthTable({
                     <InlineItemSelect
                       value={rec.itemId}
                       items={items}
+                      catById={catById}
                       onChange={(itemId) => upsert.mutate({ id: rec.id, itemId })}
                     />
                   </td>
-                  <td style={{ padding: "6px 10px" }}>
-                    {cat && (
-                      <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
-                        <span style={{ width: 8, height: 8, borderRadius: 2, background: cat.color }} />
-                        <span style={{ fontSize: 12, color: "#6b7280" }}>{cat.name}</span>
-                      </span>
-                    )}
+                  <td style={{ padding: "4px 10px" }}>
+                    <InlineCategorySelect
+                      categoryId={it?.categoryId ?? ""}
+                      catById={catById}
+                      items={items}
+                      onItemChange={(itemId) => upsert.mutate({ id: rec.id, itemId })}
+                    />
                   </td>
                   <td style={{ padding: "4px 10px" }}>
                     <EditableText
@@ -332,15 +332,14 @@ function ActiveMonthTable({
   );
 }
 
-// ─── Historical section (bottom) ────────────────────────────────────────────
-
-// ─── Inline concepto selector for history rows ───────────────────────────────
+// ─── Inline concepto selector ───────────────────────────────────────────────
 
 function InlineItemSelect({
-  value, items, onChange,
+  value, items, catById, onChange,
 }: {
   value: string;
   items: ExpenseItem[];
+  catById: Record<string, Category>;
   onChange: (itemId: string) => void;
 }) {
   const [editing, setEditing] = useState(false);
@@ -360,6 +359,9 @@ function InlineItemSelect({
     );
   }
 
+  const grouped: Record<string, ExpenseItem[]> = {};
+  items.forEach((it) => { (grouped[it.categoryId] ??= []).push(it); });
+
   return (
     <select
       autoFocus
@@ -367,10 +369,59 @@ function InlineItemSelect({
       onChange={(e) => { onChange(e.target.value); setEditing(false); }}
       onBlur={() => setEditing(false)}
       style={{ padding: "2px 6px", borderRadius: 5, border: "2px solid #6366f1",
-        fontSize: 12, outline: "none", maxWidth: 200 }}
+        fontSize: 12, outline: "none", maxWidth: 220 }}
     >
-      {items.map((it) => (
-        <option key={it.id} value={it.id}>{it.name}</option>
+      {Object.entries(grouped).map(([catId, its]) => (
+        <optgroup key={catId} label={catById[catId]?.name ?? catId}>
+          {its.map((it) => (
+            <option key={it.id} value={it.id}>{it.name}</option>
+          ))}
+        </optgroup>
+      ))}
+    </select>
+  );
+}
+
+// ─── Inline categoría selector ───────────────────────────────────────────────
+
+function InlineCategorySelect({
+  categoryId, catById, items, onItemChange,
+}: {
+  categoryId: string;
+  catById: Record<string, Category>;
+  items: ExpenseItem[];
+  onItemChange: (itemId: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const cat = catById[categoryId];
+
+  if (!editing) {
+    return (
+      <span onClick={() => setEditing(true)} title="Click para cambiar categoría"
+        style={{ cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 5 }}>
+        {cat && <span style={{ width: 8, height: 8, borderRadius: 2, background: cat.color }} />}
+        <span style={{ fontSize: 12, color: "#6b7280", borderBottom: "1px dashed #d1d5db" }}>
+          {cat?.name ?? "—"}
+        </span>
+      </span>
+    );
+  }
+
+  return (
+    <select
+      autoFocus
+      value={categoryId}
+      onChange={(e) => {
+        const firstItem = items.find((it) => it.categoryId === e.target.value);
+        if (firstItem) onItemChange(firstItem.id);
+        setEditing(false);
+      }}
+      onBlur={() => setEditing(false)}
+      style={{ padding: "2px 6px", borderRadius: 5, border: "2px solid #6366f1",
+        fontSize: 12, outline: "none" }}
+    >
+      {Object.values(catById).map((c) => (
+        <option key={c.id} value={c.id}>{c.name}</option>
       ))}
     </select>
   );
@@ -385,49 +436,35 @@ function HistorySection({
   catById: Record<string, Category>;
 }) {
   const now = new Date();
-  const fmt2 = (n: number) => String(n).padStart(2, "0");
-  const [histFrom, setHistFrom] = useState(`${now.getFullYear() - 1}-${fmt2(now.getMonth() + 1)}`);
-  const [histTo,   setHistTo]   = useState(`${now.getFullYear()}-${fmt2(now.getMonth() + 1)}`);
-
-  const parseMonthInput = (s: string) => {
-    const [y, m] = s.split("-").map(Number);
-    return { year: y, month: m - 1 };
-  };
-
-  const from  = parseMonthInput(histFrom);
-  const to    = parseMonthInput(histTo);
-  const valid = from.year < to.year || (from.year === to.year && from.month <= to.month);
+  const [fromYear, setFromYear] = useState(now.getFullYear() - 1);
+  const [toYear,   setToYear]   = useState(now.getFullYear());
+  const valid = fromYear <= toYear;
 
   const { data: histRecords = [] } = useExpenseRecordsRange(
-    from.month, from.year, to.month, to.year
+    0, fromYear, 11, toYear
   );
 
-  const monthSummaries = useMemo(() => {
+  const yearSummaries = useMemo(() => {
     if (!valid) return [];
-    const months: { month: number; year: number }[] = [];
-    let m = from.month, y = from.year;
-    while (y < to.year || (y === to.year && m <= to.month)) {
-      months.push({ month: m, year: y });
-      m++; if (m > 11) { m = 0; y++; }
-    }
-    const recsByMonth: Record<string, ExpenseRecord[]> = {};
-    histRecords.forEach((r) => {
-      const k = `${r.month}-${r.year}`;
-      (recsByMonth[k] ??= []).push(r);
-    });
-    return months.map(({ month, year }) => {
-      const recs  = recsByMonth[`${month}-${year}`] ?? [];
+    const itemById = Object.fromEntries(items.map((it) => [it.id, it]));
+    const recsByYear: Record<number, ExpenseRecord[]> = {};
+    histRecords.forEach((r) => { (recsByYear[r.year] ??= []).push(r); });
+    const years: number[] = [];
+    for (let y = fromYear; y <= toYear; y++) years.push(y);
+    return years.map((year) => {
+      const recs  = recsByYear[year] ?? [];
       const total = recs.reduce((s, r) => s + r.realValue, 0);
       const byCat: Record<string, number> = {};
       recs.forEach((r) => {
-        const it = items.find((x) => x.id === r.itemId);
+        const it = itemById[r.itemId];
         if (it) byCat[it.categoryId] = (byCat[it.categoryId] ?? 0) + r.realValue;
       });
-      return { month, year, total, byCat, count: recs.length };
+      return { year, total, byCat, count: recs.length };
     });
-  }, [histRecords, valid, from.month, from.year, to.month, to.year, items]);
+  }, [histRecords, valid, fromYear, toYear, items]);
 
   const cats = useMemo(() => Object.values(catById), [catById]);
+  const yearOptions = [2023, 2024, 2025, 2026, 2027, 2028];
 
   return (
     <div style={{ background: "#fff", borderRadius: 12, boxShadow: "0 1px 4px #0001", overflow: "hidden" }}>
@@ -439,13 +476,17 @@ function HistorySection({
         <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <label style={{ fontSize: 12, fontWeight: 600, color: "#6b7280" }}>Desde:</label>
-            <input type="month" value={histFrom} onChange={(e) => setHistFrom(e.target.value)}
-              style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 12 }} />
+            <select value={fromYear} onChange={(e) => setFromYear(+e.target.value)}
+              style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 12 }}>
+              {yearOptions.map((y) => <option key={y} value={y}>{y}</option>)}
+            </select>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <label style={{ fontSize: 12, fontWeight: 600, color: "#6b7280" }}>Hasta:</label>
-            <input type="month" value={histTo} onChange={(e) => setHistTo(e.target.value)}
-              style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 12 }} />
+            <select value={toYear} onChange={(e) => setToYear(+e.target.value)}
+              style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 12 }}>
+              {yearOptions.map((y) => <option key={y} value={y}>{y}</option>)}
+            </select>
           </div>
         </div>
       </div>
@@ -454,16 +495,16 @@ function HistorySection({
         <p style={{ padding: "16px", fontSize: 13, color: "#9ca3af" }}>Seleccioná un rango válido.</p>
       )}
 
-      {valid && monthSummaries.every((s) => s.count === 0) && (
+      {valid && yearSummaries.every((s) => s.count === 0) && (
         <p style={{ padding: "16px", fontSize: 13, color: "#9ca3af" }}>Sin registros en ese rango.</p>
       )}
 
-      {valid && monthSummaries.some((s) => s.count > 0) && (
+      {valid && yearSummaries.some((s) => s.count > 0) && (
         <div style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
             <thead>
               <tr style={{ background: "#f9fafb" }}>
-                <th style={{ textAlign: "left",  padding: "8px 14px", fontWeight: 600, color: "#374151" }}>Mes</th>
+                <th style={{ textAlign: "left",  padding: "8px 14px", fontWeight: 600, color: "#374151" }}>Año</th>
                 <th style={{ textAlign: "right", padding: "8px 10px", fontWeight: 600, color: "#374151" }}>Total</th>
                 <th style={{ textAlign: "right", padding: "8px 10px", fontWeight: 600, color: "#9ca3af" }}>Registros</th>
                 {cats.map((c) => (
@@ -474,11 +515,9 @@ function HistorySection({
               </tr>
             </thead>
             <tbody>
-              {monthSummaries.filter((s) => s.count > 0).map(({ month, year, total, byCat, count }) => (
-                <tr key={`${month}-${year}`} style={{ borderTop: "1px solid #f3f4f6" }}>
-                  <td style={{ padding: "7px 14px", fontWeight: 600, color: "#374151", whiteSpace: "nowrap" }}>
-                    {MONTHS[month]} {year}
-                  </td>
+              {yearSummaries.filter((s) => s.count > 0).map(({ year, total, byCat, count }) => (
+                <tr key={year} style={{ borderTop: "1px solid #f3f4f6" }}>
+                  <td style={{ padding: "7px 14px", fontWeight: 700, color: "#374151" }}>{year}</td>
                   <td style={{ padding: "7px 10px", textAlign: "right", fontWeight: 700, color: "#111827" }}>
                     {fmt(total)}
                   </td>
