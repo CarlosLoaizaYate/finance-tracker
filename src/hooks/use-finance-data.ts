@@ -214,7 +214,7 @@ export function useUpsertExpenseRecord() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (data:
-      | { id: string; day?: number; realValue?: number; comment?: string }
+      | { id: string; day?: number; realValue?: number; comment?: string; itemId?: string }
       | { itemId: string; day: number; month: number; year: number; realValue: number; comment?: string }
     ) => put("/api/expense-records", data),
     onSuccess: () => {

@@ -330,12 +330,57 @@ function ActiveMonthTable({
 
 // ─── Historical section (bottom) ────────────────────────────────────────────
 
+// ─── Inline concepto selector for history rows ───────────────────────────────
+
+function InlineItemSelect({
+  value, items, onChange,
+}: {
+  value: string;
+  items: ExpenseItem[];
+  onChange: (itemId: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const current = items.find((it) => it.id === value);
+
+  if (!editing) {
+    return (
+      <span
+        onClick={() => setEditing(true)}
+        title="Click para cambiar"
+        style={{ cursor: "pointer", padding: "2px 6px", borderRadius: 5,
+          color: "#111827", fontWeight: 500, borderBottom: "1px dashed #a5b4fc",
+          display: "inline-block" }}
+      >
+        {current?.name ?? "—"}
+      </span>
+    );
+  }
+
+  return (
+    <select
+      autoFocus
+      value={value}
+      onChange={(e) => { onChange(e.target.value); setEditing(false); }}
+      onBlur={() => setEditing(false)}
+      style={{ padding: "2px 6px", borderRadius: 5, border: "2px solid #6366f1",
+        fontSize: 12, outline: "none", maxWidth: 200 }}
+    >
+      {items.map((it) => (
+        <option key={it.id} value={it.id}>{it.name}</option>
+      ))}
+    </select>
+  );
+}
+
+// ─── Historical section (bottom) ────────────────────────────────────────────
+
 function HistorySection({
   items, catById,
 }: {
   items: ExpenseItem[];
   catById: Record<string, Category>;
 }) {
+  const upsert = useUpsertExpenseRecord();
   const now = new Date();
   const fmt2 = (n: number) => String(n).padStart(2, "0");
   const [histFrom, setHistFrom] = useState(`${now.getFullYear() - 1}-${fmt2(now.getMonth() + 1)}`);
@@ -452,15 +497,19 @@ function HistorySection({
 
                   {/* Individual records */}
                   {recs.map((rec) => {
-                    const it  = itemById[rec.itemId];
-                    const cat = it ? catById[it.categoryId] : undefined;
+                    const selectedItem = itemById[rec.itemId];
+                    const cat          = selectedItem ? catById[selectedItem.categoryId] : undefined;
                     return (
                       <tr key={rec.id} style={{ borderTop: "1px solid #f3f4f6" }}>
                         <td style={{ textAlign: "center", padding: "5px 10px", color: "#6366f1", fontWeight: 600 }}>
                           {rec.day}
                         </td>
-                        <td style={{ padding: "5px 12px", color: "#111827", fontWeight: 500 }}>
-                          {it?.name ?? "—"}
+                        <td style={{ padding: "5px 12px" }}>
+                          <InlineItemSelect
+                            value={rec.itemId}
+                            items={items}
+                            onChange={(itemId) => upsert.mutate({ id: rec.id, itemId })}
+                          />
                         </td>
                         <td style={{ padding: "5px 10px" }}>
                           {cat ? (

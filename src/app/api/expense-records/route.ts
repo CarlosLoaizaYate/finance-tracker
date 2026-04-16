@@ -84,6 +84,7 @@ export async function PUT(req: NextRequest) {
     if (body.day       !== undefined) data.day       = body.day;
     if (body.realValue !== undefined) data.realValue = body.realValue;
     if (body.comment   !== undefined) data.comment   = body.comment;
+    if (body.itemId    !== undefined) data.itemId    = body.itemId;
     const record = await prisma.expenseRecord.update({
       where: { id: body.id, userId: user.id },
       data,
