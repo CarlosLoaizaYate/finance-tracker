@@ -227,7 +227,10 @@ function RemindersSection({
                     placeholder="Monto" style={{ width: "100%", padding: "6px 8px", borderRadius: 6, border: "1px solid #c084fc", fontSize: 13, outline: "none" }}
                     onKeyDown={e => {
                       if (e.key === "Enter" && amount) {
-                        upsert.mutate({ itemId: it.id, day: it.defaultDay ?? 1, month, year, realValue: +amount, comment: "Recordatorio pagado" });
+                        const today = new Date().getDate();
+                        const maxD = new Date(year, month + 1, 0).getDate();
+                        const paymentDay = Math.min(today, maxD);
+                        upsert.mutate({ itemId: it.id, day: paymentDay, month, year, realValue: +amount, comment: "Recordatorio pagado" });
                         setPayingId(null);
                       }
                       if (e.key === "Escape") setPayingId(null);
@@ -235,7 +238,10 @@ function RemindersSection({
                   />
                   <button onClick={() => {
                       if (amount) {
-                        upsert.mutate({ itemId: it.id, day: it.defaultDay ?? 1, month, year, realValue: +amount, comment: "Recordatorio pagado" });
+                        const today = new Date().getDate();
+                        const maxD = new Date(year, month + 1, 0).getDate();
+                        const paymentDay = Math.min(today, maxD);
+                        upsert.mutate({ itemId: it.id, day: paymentDay, month, year, realValue: +amount, comment: "Recordatorio pagado" });
                         setPayingId(null);
                       }
                     }}
