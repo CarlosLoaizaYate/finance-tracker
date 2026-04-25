@@ -57,6 +57,7 @@ export interface ExpenseItem {
   defaultDay: number;
   active: boolean;
   recurring: boolean;
+  isImportant: boolean;
   categoryId: string;
   category?: Category;
   budgetHistory?: BudgetHistoryEntry[];
@@ -187,7 +188,7 @@ export function useInvestmentSnapshots(year: number | "all") {
 export function useAddExpenseItem() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: { name: string; monthlyBudget: number; categoryId: string }) =>
+    mutationFn: (data: { name: string; monthlyBudget: number; categoryId: string; isImportant?: boolean }) =>
       post("/api/expense-items", data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["expense-items"] }),
   });
@@ -204,7 +205,7 @@ export function useRemoveExpenseItem() {
 export function useUpdateExpenseItem() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: { id: string; name?: string; categoryId?: string; monthlyBudget?: number }) =>
+    mutationFn: (data: { id: string; name?: string; categoryId?: string; monthlyBudget?: number; isImportant?: boolean }) =>
       put("/api/expense-items", data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["expense-items"] }),
   });
@@ -365,6 +366,15 @@ export function useToggleRecurring() {
   return useMutation({
     mutationFn: ({ id, recurring }: { id: string; recurring: boolean }) =>
       put("/api/expense-items", { id, recurring }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["expense-items"] }),
+  });
+}
+
+export function useToggleImportant() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, isImportant }: { id: string; isImportant: boolean }) =>
+      put("/api/expense-items", { id, isImportant }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["expense-items"] }),
   });
 }

@@ -174,6 +174,92 @@ function EditableText({ value, onChange, placeholder }: { value: string; onChang
   );
 }
 
+// ─── Recordatorios (Gastos Importantes) ───────────────────────────────────────
+
+function RemindersSection({
+  month, year, items, catById, records
+}: { month: number; year: number; items: ExpenseItem[]; catById: Record<string, Category>; records: ExpenseRecord[] }) {
+  const upsert = useUpsertExpenseRecord();
+  const [payingId, setPayingId] = useState<string | null>(null);
+  const [amount, setAmount] = useState("");
+  
+  const reminders = useMemo(() => items.filter(it => it.isImportant && !records.some(r => r.itemId === it.id)), [items, records]);
+
+  if (reminders.length === 0) return null;
+
+  return (
+    <div style={{ marginBottom: 20 }}>
+      <h3 style={{ fontSize: 14, fontWeight: 700, color: "#9333ea", marginBottom: 10, display: "flex", alignItems: "center", gap: 6 }}>
+        <span style={{ fontSize: 16 }}>🔔</span> Recordatorios Pendientes ({MONTHS[month]})
+      </h3>
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-start" }}>
+        {reminders.map(it => {
+          const cat = catById[it.categoryId];
+          const budgetAmt = effectiveBudget(it, month, year);
+          const isPaying = payingId === it.id;
+          
+          return (
+            <div key={it.id} style={{
+              background: "#faf5ff", border: "1px dashed #d8b4fe", borderRadius: 10, padding: "12px 16px",
+              display: "flex", flexDirection: "column", gap: 10, minWidth: 220,
+              boxShadow: "0 2px 8px rgba(147, 51, 234, 0.05)"
+            }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  {cat && <span style={{ width: 8, height: 8, borderRadius: 2, background: cat.color }} />}
+                  <span style={{ fontSize: 14, fontWeight: 700, color: "#4c1d95" }}>{it.name}</span>
+                </div>
+                {!isPaying && (
+                  <span style={{ fontSize: 13, fontWeight: 700, color: "#a855f7" }}>
+                    {fmt(budgetAmt)}
+                  </span>
+                )}
+              </div>
+              
+              {isPaying ? (
+                <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
+                  <input autoFocus type="number" value={amount} onChange={e => setAmount(e.target.value)}
+                    placeholder="Monto" style={{ width: "100%", padding: "6px 8px", borderRadius: 6, border: "1px solid #c084fc", fontSize: 13, outline: "none" }}
+                    onKeyDown={e => {
+                      if (e.key === "Enter" && amount) {
+                        upsert.mutate({ itemId: it.id, day: it.defaultDay ?? 1, month, year, realValue: +amount, comment: "Recordatorio pagado" });
+                        setPayingId(null);
+                      }
+                      if (e.key === "Escape") setPayingId(null);
+                    }}
+                  />
+                  <button onClick={() => {
+                      if (amount) {
+                        upsert.mutate({ itemId: it.id, day: it.defaultDay ?? 1, month, year, realValue: +amount, comment: "Recordatorio pagado" });
+                        setPayingId(null);
+                      }
+                    }}
+                    style={{ background: "#9333ea", color: "#fff", border: "none", borderRadius: 6, padding: "0 10px", cursor: "pointer", fontWeight: 700 }}>✓</button>
+                  <button onClick={() => setPayingId(null)}
+                    style={{ background: "none", color: "#9ca3af", border: "1px solid #e5e7eb", borderRadius: 6, padding: "0 8px", cursor: "pointer" }}>✕</button>
+                </div>
+              ) : (
+                <button 
+                  onClick={() => { setPayingId(it.id); setAmount(String(budgetAmt || "")); }}
+                  style={{
+                    background: "#9333ea", color: "#fff", border: "none", borderRadius: 6, padding: "6px 10px",
+                    fontSize: 12, fontWeight: 600, cursor: "pointer", textAlign: "center",
+                    transition: "all 0.15s ease"
+                  }}
+                  onMouseOver={e => e.currentTarget.style.background = "#7e22ce"}
+                  onMouseOut={e => e.currentTarget.style.background = "#9333ea"}
+                >
+                  Registrar Pago
+                </button>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 // ─── Active month table (top section) ───────────────────────────────────────
 
 function ActiveMonthTable({
@@ -679,6 +765,9 @@ export default function ExpensesTab() {
           </select>
         </div>
       </div>
+
+      {/* ── Recordatorios ── */}
+      <RemindersSection month={expenseMonth} year={expenseYear} items={dbItems} catById={catById} records={monthRecords} />
 
       {/* ── Active month table ── */}
       <ActiveMonthTable

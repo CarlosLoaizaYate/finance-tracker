@@ -375,6 +375,7 @@ function BudgetItemRow({ item, categories }: { item: ExpenseItem; categories: Ca
   // edit fields
   const [editName,   setEditName]   = useState(item.name);
   const [editCatId,  setEditCatId]  = useState(item.categoryId);
+  const [editImportant, setEditImportant] = useState(item.isImportant ?? false);
 
   // budget change fields
   const [amount,    setAmount]    = useState("");
@@ -385,7 +386,7 @@ function BudgetItemRow({ item, categories }: { item: ExpenseItem; categories: Ca
   const cat = categories.find((c) => c.id === item.categoryId);
 
   const handleSaveEdit = () => {
-    updateItem.mutate({ id: item.id, name: editName.trim(), categoryId: editCatId });
+    updateItem.mutate({ id: item.id, name: editName.trim(), categoryId: editCatId, isImportant: editImportant });
     setMode("view");
   };
 
@@ -443,6 +444,10 @@ function BudgetItemRow({ item, categories }: { item: ExpenseItem; categories: Ca
               {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <input type="checkbox" checked={editImportant} onChange={(e) => setEditImportant(e.target.checked)} id={`chk-${item.id}`} />
+            <label htmlFor={`chk-${item.id}`} style={{ fontSize: 11, color: "#6b7280", cursor: "pointer" }}>¿Recordatorio?</label>
+          </div>
           <button onClick={handleSaveEdit} disabled={updateItem.isPending || !editName.trim()}
             style={{ padding: "4px 12px", borderRadius: 6, border: "none", cursor: "pointer",
               background: "#6366f1", color: "#fff", fontWeight: 600, fontSize: 13 }}>
@@ -485,7 +490,7 @@ function BudgetItemRow({ item, categories }: { item: ExpenseItem; categories: Ca
   );
 }
 
-function AddExpenseItemForm({ categories, onDone }: { categories: Category[]; onDone: () => void }) {
+function AddExpenseItemForm({ categories, isImportant, onDone }: { categories: Category[]; isImportant?: boolean; onDone: () => void }) {
   const addItem = useAddExpenseItem();
   const [name,    setName]    = useState("");
   const [catId,   setCatId]   = useState(categories[0]?.id ?? "");
@@ -493,7 +498,7 @@ function AddExpenseItemForm({ categories, onDone }: { categories: Category[]; on
 
   const handleAdd = () => {
     if (!name.trim() || !budget || !catId) return;
-    addItem.mutate({ name: name.trim(), monthlyBudget: +budget, categoryId: catId }, {
+    addItem.mutate({ name: name.trim(), monthlyBudget: +budget, categoryId: catId, isImportant }, {
       onSuccess: () => { onDone(); setName(""); setBudget(""); },
     });
   };
@@ -541,7 +546,9 @@ function ExpenseBudgets() {
 
   const catMap = Object.fromEntries(categories.map((c) => [c.id, c]));
 
-  const grouped = items.reduce<Record<string, ExpenseItem[]>>((acc, it) => {
+  const regularItems = items.filter(it => !it.isImportant);
+
+  const grouped = regularItems.reduce<Record<string, ExpenseItem[]>>((acc, it) => {
     (acc[it.categoryId] ??= []).push(it);
     return acc;
   }, {});
@@ -569,6 +576,66 @@ function ExpenseBudgets() {
         <p style={{ fontSize: 13, color: "#6b7280" }}>Cargando...</p>
       ) : items.length === 0 ? (
         <p style={{ fontSize: 13, color: "#9ca3af" }}>Sin egresos configurados.</p>
+      ) : (
+        Object.entries(grouped).map(([catId, catItems]) => {
+          const cat = catMap[catId];
+          return (
+            <div key={catId} style={{ marginBottom: 14 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                <span style={{ width: 10, height: 10, borderRadius: 3, background: cat?.color ?? "#6b7280", flexShrink: 0 }} />
+                <span style={{ fontSize: 13, fontWeight: 700, color: "#374151" }}>{cat?.name ?? catId}</span>
+              </div>
+              <ul style={{ listStyle: "none", padding: 0, margin: 0, background: "#fff",
+                borderRadius: 8, border: "1px solid #f3f4f6", overflow: "hidden" }}>
+                {catItems.map((it) => (
+                  <BudgetItemRow key={it.id} item={it} categories={categories} />
+                ))}
+              </ul>
+            </div>
+          );
+        })
+      )}
+    </SectionCard>
+  );
+}
+
+function ImportantExpensesSection() {
+  const { data: items = [], isLoading } = useExpenseItems();
+  const { data: categories = [] }       = useCategories();
+  const [showAdd, setShowAdd]           = useState(false);
+
+  const catMap = Object.fromEntries(categories.map((c) => [c.id, c]));
+
+  const importantItems = items.filter(it => it.isImportant);
+
+  const grouped = importantItems.reduce<Record<string, ExpenseItem[]>>((acc, it) => {
+    (acc[it.categoryId] ??= []).push(it);
+    return acc;
+  }, {});
+
+  return (
+    <SectionCard title="Gastos Importantes (Recordatorios)">
+      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
+        <button onClick={() => setShowAdd(!showAdd)}
+          style={{ padding: "6px 14px", borderRadius: 8, border: "none", cursor: "pointer",
+            background: "#6366f1", color: "#fff", fontWeight: 600, fontSize: 13 }}>
+          + Nuevo recordatorio
+        </button>
+      </div>
+
+      {showAdd && categories.length > 0 && (
+        <AddExpenseItemForm categories={categories} isImportant onDone={() => setShowAdd(false)} />
+      )}
+      {showAdd && categories.length === 0 && (
+        <p style={{ fontSize: 12, color: "#ef4444", marginBottom: 12 }}>
+          Primero crea al menos una categoría.
+        </p>
+      )}
+
+      {isLoading ? (
+        <p style={{ fontSize: 13, color: "#6b7280" }}>Cargando...</p>
+      ) : importantItems.length === 0 ? (
+        <p style={{ fontSize: 13, color: "#9ca3af" }}>Sin gastos importantes configurados.</p>
       ) : (
         Object.entries(grouped).map(([catId, catItems]) => {
           const cat = catMap[catId];
@@ -652,6 +719,7 @@ export default function SettingsTab() {
       <h2 style={{ fontSize: 20, fontWeight: 700, color: "#111827", marginBottom: 16 }}>Configuración</h2>
       <CategoriesSection />
       <IncomeSources />
+      <ImportantExpensesSection />
       <ExpenseBudgets />
       <InvestmentTypesSection />
     </div>

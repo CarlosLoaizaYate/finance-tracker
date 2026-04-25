@@ -30,6 +30,7 @@ export async function POST(req: NextRequest) {
       name: body.name,
       monthlyBudget: body.monthlyBudget,
       categoryId: body.categoryId,
+      isImportant: body.isImportant ?? false,
       userId: user.id,
     },
     include: { category: true },
@@ -49,6 +50,7 @@ export async function PUT(req: NextRequest) {
   if (body.defaultDay    !== undefined) data.defaultDay    = body.defaultDay;
   if (body.active        !== undefined) data.active        = body.active;
   if (body.recurring     !== undefined) data.recurring     = body.recurring;
+  if (body.isImportant   !== undefined) data.isImportant   = body.isImportant;
 
   const item = await prisma.expenseItem.update({ where: { id: body.id, userId: user.id }, data });
   return NextResponse.json(item);
