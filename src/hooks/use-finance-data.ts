@@ -188,7 +188,7 @@ export function useInvestmentSnapshots(year: number | "all") {
 export function useAddExpenseItem() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: { name: string; monthlyBudget: number; categoryId: string; isImportant?: boolean }) =>
+    mutationFn: (data: { name: string; monthlyBudget: number; categoryId: string; isImportant?: boolean; defaultDay?: number }) =>
       post("/api/expense-items", data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["expense-items"] }),
   });
@@ -205,7 +205,7 @@ export function useRemoveExpenseItem() {
 export function useUpdateExpenseItem() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: { id: string; name?: string; categoryId?: string; monthlyBudget?: number; isImportant?: boolean }) =>
+    mutationFn: (data: { id: string; name?: string; categoryId?: string; monthlyBudget?: number; isImportant?: boolean; defaultDay?: number }) =>
       put("/api/expense-items", data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["expense-items"] }),
   });

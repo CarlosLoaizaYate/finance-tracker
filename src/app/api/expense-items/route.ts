@@ -31,6 +31,7 @@ export async function POST(req: NextRequest) {
       monthlyBudget: body.monthlyBudget,
       categoryId: body.categoryId,
       isImportant: body.isImportant ?? false,
+      defaultDay: body.defaultDay ?? 1,
       userId: user.id,
     },
     include: { category: true },

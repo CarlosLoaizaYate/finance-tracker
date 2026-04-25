@@ -376,6 +376,7 @@ function BudgetItemRow({ item, categories }: { item: ExpenseItem; categories: Ca
   const [editName,   setEditName]   = useState(item.name);
   const [editCatId,  setEditCatId]  = useState(item.categoryId);
   const [editImportant, setEditImportant] = useState(item.isImportant ?? false);
+  const [editDefaultDay, setEditDefaultDay] = useState(item.defaultDay ?? 1);
 
   // budget change fields
   const [amount,    setAmount]    = useState("");
@@ -386,7 +387,7 @@ function BudgetItemRow({ item, categories }: { item: ExpenseItem; categories: Ca
   const cat = categories.find((c) => c.id === item.categoryId);
 
   const handleSaveEdit = () => {
-    updateItem.mutate({ id: item.id, name: editName.trim(), categoryId: editCatId, isImportant: editImportant });
+    updateItem.mutate({ id: item.id, name: editName.trim(), categoryId: editCatId, isImportant: editImportant, defaultDay: editDefaultDay });
     setMode("view");
   };
 
@@ -402,7 +403,9 @@ function BudgetItemRow({ item, categories }: { item: ExpenseItem; categories: Ca
       {/* View row */}
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         {cat && <span style={{ width: 8, height: 8, borderRadius: 2, background: cat.color, flexShrink: 0 }} />}
-        <span style={{ flex: 1, fontSize: 13, color: "#111827", fontWeight: 500 }}>{item.name}</span>
+        <span style={{ flex: 1, fontSize: 13, color: "#111827", fontWeight: 500 }}>
+          {item.name} {item.isImportant && <span style={{ fontSize: 11, color: "#f59e0b", marginLeft: 4 }}>(Día {item.defaultDay})</span>}
+        </span>
         <span style={{ fontSize: 12, color: "#9ca3af" }}>{cat?.name}</span>
         <span style={{ fontSize: 13, fontWeight: 700, color: "#374151", minWidth: 80, textAlign: "right" }}>
           {fmt(current)}
@@ -448,6 +451,13 @@ function BudgetItemRow({ item, categories }: { item: ExpenseItem; categories: Ca
             <input type="checkbox" checked={editImportant} onChange={(e) => setEditImportant(e.target.checked)} id={`chk-${item.id}`} />
             <label htmlFor={`chk-${item.id}`} style={{ fontSize: 11, color: "#6b7280", cursor: "pointer" }}>¿Recordatorio?</label>
           </div>
+          {editImportant && (
+            <div>
+              <label style={{ fontSize: 11, color: "#6b7280", display: "block" }}>Día</label>
+              <input type="number" min={1} max={31} value={editDefaultDay} onChange={(e) => setEditDefaultDay(+e.target.value)}
+                style={{ width: 50, padding: "4px 8px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 13 }} />
+            </div>
+          )}
           <button onClick={handleSaveEdit} disabled={updateItem.isPending || !editName.trim()}
             style={{ padding: "4px 12px", borderRadius: 6, border: "none", cursor: "pointer",
               background: "#6366f1", color: "#fff", fontWeight: 600, fontSize: 13 }}>
@@ -495,11 +505,12 @@ function AddExpenseItemForm({ categories, isImportant, onDone }: { categories: C
   const [name,    setName]    = useState("");
   const [catId,   setCatId]   = useState(categories[0]?.id ?? "");
   const [budget,  setBudget]  = useState("");
+  const [defaultDay, setDefaultDay] = useState(new Date().getDate());
 
   const handleAdd = () => {
     if (!name.trim() || !budget || !catId) return;
-    addItem.mutate({ name: name.trim(), monthlyBudget: +budget, categoryId: catId, isImportant }, {
-      onSuccess: () => { onDone(); setName(""); setBudget(""); },
+    addItem.mutate({ name: name.trim(), monthlyBudget: +budget, categoryId: catId, isImportant, defaultDay }, {
+      onSuccess: () => { onDone(); setName(""); setBudget(""); setDefaultDay(new Date().getDate()); },
     });
   };
 
@@ -525,6 +536,13 @@ function AddExpenseItemForm({ categories, isImportant, onDone }: { categories: C
           placeholder="0"
           style={{ width: 130, padding: "5px 8px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 13 }} />
       </div>
+      {isImportant && (
+        <div>
+          <label style={{ fontSize: 11, color: "#6b7280", display: "block" }}>Día de pago</label>
+          <input type="number" min={1} max={31} value={defaultDay} onChange={(e) => setDefaultDay(+e.target.value)}
+            style={{ width: 60, padding: "5px 8px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 13 }} />
+        </div>
+      )}
       <button onClick={handleAdd} disabled={addItem.isPending || !name.trim() || !budget || !catId}
         style={{ padding: "5px 14px", borderRadius: 6, border: "none", cursor: "pointer",
           background: "#10b981", color: "#fff", fontWeight: 600, fontSize: 13 }}>

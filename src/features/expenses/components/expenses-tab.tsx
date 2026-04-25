@@ -207,7 +207,12 @@ function RemindersSection({
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                   {cat && <span style={{ width: 8, height: 8, borderRadius: 2, background: cat.color }} />}
-                  <span style={{ fontSize: 14, fontWeight: 700, color: "#4c1d95" }}>{it.name}</span>
+                  <span style={{ fontSize: 14, fontWeight: 700, color: "#4c1d95" }}>
+                    {it.name}
+                    <span style={{ fontSize: 11, color: "#c084fc", fontWeight: 600, marginLeft: 6 }}>
+                      (Día {it.defaultDay ?? 1})
+                    </span>
+                  </span>
                 </div>
                 {!isPaying && (
                   <span style={{ fontSize: 13, fontWeight: 700, color: "#a855f7" }}>
