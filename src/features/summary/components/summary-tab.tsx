@@ -3,13 +3,19 @@
 import { useMemo } from "react";
 import {
   ComposedChart, Area, Bar, Line, PieChart, Pie, Cell,
-  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+  BarChart, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
+  ResponsiveContainer, ReferenceLine,
 } from "recharts";
 import {
   useExpenseItems,
   useExpenseRecords,
   useIncomeSources,
   useCategories,
+  useStocks,
+  useStockTransactions,
+  useStockPriceSnapshots,
+  useFunds,
+  useFixedDepositGroups,
   effectiveIncomeAmount,
 } from "@/hooks/use-finance-data";
 import { useDashboardStore } from "@/stores/dashboard-store";
@@ -198,6 +204,383 @@ export default function SummaryTab() {
         </div>
       </div>
 
+      <SavingsRateChart rangeData={rangeData} />
+
+      <InvestmentsSummarySection />
+      <InvestmentChartsSection />
+
     </>
+  );
+}
+
+const CDT_COLORS = ["#0891b2", "#059669", "#7c3aed", "#d97706", "#dc2626", "#2563eb", "#db2777"];
+
+function InvestmentsSummarySection() {
+  const { data: dbStocks = [] } = useStocks();
+  const { data: allTxs = [] } = useStockTransactions();
+  const { data: allPriceSnaps = [] } = useStockPriceSnapshots();
+  const { data: funds = [] } = useFunds();
+  const { data: depositGroups = [] } = useFixedDepositGroups();
+
+  const txByInv = useMemo(() => {
+    const map: Record<string, typeof allTxs> = {};
+    allTxs.forEach(tx => { (map[tx.investmentId] ??= []).push(tx); });
+    return map;
+  }, [allTxs]);
+
+  const priceSnapByInv = useMemo(() => {
+    const map: Record<string, typeof allPriceSnaps> = {};
+    allPriceSnaps.forEach(s => { (map[s.investmentId] ??= []).push(s); });
+    return map;
+  }, [allPriceSnaps]);
+
+  // Stocks
+  const stocksInvested = useMemo(() =>
+    dbStocks
+      .filter(inv => txByInv[inv.id]?.length)
+      .reduce((s, inv) => {
+        const txs = txByInv[inv.id];
+        return s + txs.reduce((t, tx) => t + tx.quantity * tx.priceUnit + tx.commission, 0);
+      }, 0),
+    [dbStocks, txByInv]);
+
+  const stocksCurrentValue = useMemo(() => {
+    const items = dbStocks.filter(inv => txByInv[inv.id]?.length);
+    if (items.length === 0) return null;
+    let total = 0;
+    let allHavePrice = true;
+    for (const inv of items) {
+      const txs = txByInv[inv.id];
+      const totalShares = txs.reduce((s, t) => s + t.quantity, 0);
+      const latest = (priceSnapByInv[inv.id] ?? []).sort((a, b) => b.year - a.year || b.month - a.month)[0];
+      if (latest) {
+        total += latest.pricePerShare * totalShares;
+      } else {
+        allHavePrice = false;
+        total += txs.reduce((s, t) => s + t.quantity * t.priceUnit + t.commission, 0);
+      }
+    }
+    return allHavePrice ? total : null;
+  }, [dbStocks, txByInv, priceSnapByInv]);
+
+  // Funds
+  const fundsInvested = useMemo(() =>
+    funds.reduce((s, f) => s + f.baseCapital + f.snapshots.reduce((t, x) => t + x.contribution, 0), 0),
+    [funds]);
+
+  const fundsCurrentValue = useMemo(() => {
+    if (funds.length === 0) return null;
+    let total = 0;
+    for (const f of funds) {
+      const sorted = [...f.snapshots].sort((a, b) => (b.year * 12 + b.month) - (a.year * 12 + a.month));
+      total += sorted[0]?.currentValue ?? (f.baseCapital + f.snapshots.reduce((s, x) => s + x.contribution, 0));
+    }
+    return total;
+  }, [funds]);
+
+  // CDTs
+  const cdtsInvested = useMemo(() =>
+    depositGroups.reduce((s, g) => {
+      const sorted = [...g.cycles].sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime());
+      return s + sorted.reduce((t, c) => t + c.capitalAdded, 0);
+    }, 0),
+    [depositGroups]);
+
+  const cdtsCurrentValue = useMemo(() => {
+    if (depositGroups.length === 0) return null;
+    let total = 0;
+    for (const g of depositGroups) {
+      const sorted = [...g.cycles].sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime());
+      const lastCycleWithData = [...sorted].reverse().find(c => (c.snapshots ?? []).length > 0);
+      const lastSnap = lastCycleWithData
+        ? [...(lastCycleWithData.snapshots ?? [])].sort((a, b) => a.year !== b.year ? a.year - b.year : a.month - b.month).at(-1)
+        : null;
+      const activeCycle = sorted.find(c => c.earnedInterest === null) ?? null;
+      const baseCycle = activeCycle ?? sorted.at(-1);
+      total += lastSnap ? lastSnap.gain : (baseCycle?.capital ?? sorted.reduce((s, c) => s + c.capitalAdded, 0));
+    }
+    return total;
+  }, [depositGroups]);
+
+  const totalInvested = stocksInvested + fundsInvested + cdtsInvested;
+  const hasStocks = dbStocks.some(inv => txByInv[inv.id]?.length);
+  const hasFunds = funds.length > 0;
+  const hasCdts = depositGroups.length > 0;
+
+  if (!hasStocks && !hasFunds && !hasCdts) return null;
+
+  const rows: { label: string; color: string; invested: number; current: number | null }[] = [];
+  if (hasStocks) rows.push({ label: "Stocks", color: "#6366f1", invested: stocksInvested, current: stocksCurrentValue });
+  if (hasFunds)  rows.push({ label: "Funds",  color: "#0891b2", invested: fundsInvested,  current: fundsCurrentValue });
+  if (hasCdts)   rows.push({ label: "CDTs",   color: "#059669", invested: cdtsInvested,   current: cdtsCurrentValue });
+
+  const totalCurrent = rows.every(r => r.current !== null)
+    ? rows.reduce((s, r) => s + (r.current ?? 0), 0)
+    : null;
+  const totalGain = totalCurrent !== null ? totalCurrent - totalInvested : null;
+  const totalGainPct = totalGain !== null && totalInvested > 0 ? (totalGain / totalInvested) * 100 : null;
+
+  return (
+    <div style={{ background: "#fff", borderRadius: 12, padding: 16, boxShadow: "0 1px 4px #0001", marginBottom: 16 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
+        <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700 }}>Investments</h3>
+        <div style={{ display: "flex", gap: 20, fontSize: 12, flexWrap: "wrap" }}>
+          <span style={{ color: "#6b7280" }}>
+            Invested: <strong style={{ color: "#6366f1" }}>{fmt(totalInvested)}</strong>
+          </span>
+          {totalCurrent !== null && (
+            <span style={{ color: "#6b7280" }}>
+              Current: <strong style={{ color: "#059669" }}>{fmt(totalCurrent)}</strong>
+            </span>
+          )}
+          {totalGain !== null && totalGainPct !== null && (
+            <span style={{ color: "#6b7280" }}>
+              Gain:{" "}
+              <strong style={{ color: totalGain >= 0 ? "#059669" : "#dc2626" }}>
+                {totalGain >= 0 ? "+" : ""}{fmt(totalGain)} ({totalGainPct >= 0 ? "+" : ""}{totalGainPct.toFixed(2)}%)
+              </strong>
+            </span>
+          )}
+        </div>
+      </div>
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+        {rows.map(row => {
+          const gain = row.current !== null ? row.current - row.invested : null;
+          const gainPct = gain !== null && row.invested > 0 ? (gain / row.invested) * 100 : null;
+          return (
+            <div key={row.label} style={{
+              flex: 1, minWidth: 160,
+              border: `1px solid ${row.color}30`,
+              borderTop: `3px solid ${row.color}`,
+              borderRadius: 8, padding: "10px 14px",
+              background: row.color + "08",
+            }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: row.color, marginBottom: 6 }}>{row.label}</div>
+              <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 2 }}>
+                Invested: <strong style={{ color: "#374151" }}>{fmt(row.invested)}</strong>
+              </div>
+              <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 2 }}>
+                Current:{" "}
+                <strong style={{ color: row.current !== null ? "#059669" : "#9ca3af" }}>
+                  {row.current !== null ? fmt(row.current) : "—"}
+                </strong>
+              </div>
+              {gain !== null && gainPct !== null && (
+                <div style={{ fontSize: 11, marginTop: 4 }}>
+                  <strong style={{ color: gain >= 0 ? "#059669" : "#dc2626" }}>
+                    {gain >= 0 ? "+" : ""}{fmt(gain)} ({gainPct >= 0 ? "+" : ""}{gainPct.toFixed(2)}%)
+                  </strong>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ── Savings Rate Chart ────────────────────────────────────────────────
+
+interface RangeRow { mes: string; ingresos: number; gastos: number; libre: number }
+
+function SavingsRateChart({ rangeData }: { rangeData: RangeRow[] }) {
+  const data = rangeData
+    .filter(d => d.ingresos > 0)
+    .map(d => ({
+      mes: d.mes,
+      rate: Math.round((d.libre / d.ingresos) * 100 * 10) / 10,
+    }));
+
+  if (data.length === 0) return null;
+
+  const CustomDot = (props: any) => {
+    const { cx, cy, payload } = props;
+    const color = payload.rate >= 0 ? "#10b981" : "#ef4444";
+    return <circle cx={cx} cy={cy} r={4} fill={color} stroke="#fff" strokeWidth={1.5} />;
+  };
+
+  const CustomTooltip = ({ active, payload, label }: any) => {
+    if (!active || !payload?.length) return null;
+    const v = payload[0].value as number;
+    return (
+      <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 8, padding: "8px 12px", fontSize: 12 }}>
+        <div style={{ fontWeight: 700, marginBottom: 4 }}>{label}</div>
+        <div style={{ color: v >= 0 ? "#059669" : "#dc2626", fontWeight: 600 }}>
+          {v >= 0 ? "+" : ""}{v}% saved
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div style={{ background: "#fff", borderRadius: 12, padding: 16, boxShadow: "0 1px 4px #0001", marginBottom: 16 }}>
+      <h3 style={{ margin: "0 0 12px", fontSize: 14, fontWeight: 700 }}>Monthly Savings Rate</h3>
+      <ResponsiveContainer width="100%" height={200}>
+        <ComposedChart data={data}>
+          <CartesianGrid strokeDasharray="3 3" vertical={false} />
+          <XAxis dataKey="mes" tick={{ fontSize: 11 }} />
+          <YAxis tick={{ fontSize: 10 }} tickFormatter={(v) => `${v}%`} domain={["auto", "auto"]} />
+          <Tooltip content={<CustomTooltip />} />
+          <ReferenceLine y={0} stroke="#9ca3af" strokeDasharray="4 4" />
+          <Area
+            type="monotone" dataKey="rate"
+            fill="#d1fae5" stroke="#10b981" strokeWidth={2}
+            dot={<CustomDot />}
+            activeDot={{ r: 5 }}
+          />
+        </ComposedChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+// ── Investment Distribution + Gain Charts ─────────────────────────────
+
+function InvestmentChartsSection() {
+  const { data: dbStocks = [] } = useStocks();
+  const { data: allTxs = [] } = useStockTransactions();
+  const { data: allPriceSnaps = [] } = useStockPriceSnapshots();
+  const { data: funds = [] } = useFunds();
+  const { data: depositGroups = [] } = useFixedDepositGroups();
+
+  const txByInv = useMemo(() => {
+    const map: Record<string, typeof allTxs> = {};
+    allTxs.forEach(tx => { (map[tx.investmentId] ??= []).push(tx); });
+    return map;
+  }, [allTxs]);
+
+  const priceSnapByInv = useMemo(() => {
+    const map: Record<string, typeof allPriceSnaps> = {};
+    allPriceSnaps.forEach(s => { (map[s.investmentId] ??= []).push(s); });
+    return map;
+  }, [allPriceSnaps]);
+
+  const rows = useMemo(() => {
+    const result: { name: string; color: string; invested: number; current: number | null }[] = [];
+
+    const hasStocks = dbStocks.some(inv => txByInv[inv.id]?.length);
+    if (hasStocks) {
+      let invested = 0, current = 0, allHavePrice = true;
+      dbStocks.filter(inv => txByInv[inv.id]?.length).forEach(inv => {
+        const txs = txByInv[inv.id];
+        const cost = txs.reduce((s, t) => s + t.quantity * t.priceUnit + t.commission, 0);
+        const shares = txs.reduce((s, t) => s + t.quantity, 0);
+        const latest = (priceSnapByInv[inv.id] ?? []).sort((a, b) => b.year - a.year || b.month - a.month)[0];
+        invested += cost;
+        if (latest) current += latest.pricePerShare * shares;
+        else { allHavePrice = false; current += cost; }
+      });
+      result.push({ name: "Stocks", color: "#6366f1", invested, current: allHavePrice ? current : null });
+    }
+
+    if (funds.length > 0) {
+      const invested = funds.reduce((s, f) => s + f.baseCapital + f.snapshots.reduce((t, x) => t + x.contribution, 0), 0);
+      const current = funds.reduce((s, f) => {
+        const sorted = [...f.snapshots].sort((a, b) => (b.year * 12 + b.month) - (a.year * 12 + a.month));
+        return s + (sorted[0]?.currentValue ?? (f.baseCapital + f.snapshots.reduce((t, x) => t + x.contribution, 0)));
+      }, 0);
+      result.push({ name: "Funds", color: "#0891b2", invested, current });
+    }
+
+    if (depositGroups.length > 0) {
+      let invested = 0, current = 0;
+      depositGroups.forEach(g => {
+        const sorted = [...g.cycles].sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime());
+        invested += sorted.reduce((s, c) => s + c.capitalAdded, 0);
+        const lastCycleWithData = [...sorted].reverse().find(c => (c.snapshots ?? []).length > 0);
+        const lastSnap = lastCycleWithData
+          ? [...(lastCycleWithData.snapshots ?? [])].sort((a, b) => a.year !== b.year ? a.year - b.year : a.month - b.month).at(-1)
+          : null;
+        const activeCycle = sorted.find(c => c.earnedInterest === null) ?? null;
+        const baseCycle = activeCycle ?? sorted.at(-1);
+        current += lastSnap ? lastSnap.gain : (baseCycle?.capital ?? sorted.reduce((s, c) => s + c.capitalAdded, 0));
+      });
+      result.push({ name: "CDTs", color: "#059669", invested, current });
+    }
+
+    return result;
+  }, [dbStocks, txByInv, priceSnapByInv, funds, depositGroups]);
+
+  if (rows.length === 0) return null;
+
+  const pieData = rows.map(r => ({ name: r.name, value: r.invested, color: r.color }));
+
+  const barData = rows.map(r => ({
+    name: r.name,
+    Invested: r.invested,
+    "Current Value": r.current ?? r.invested,
+    gain: r.current !== null ? r.current - r.invested : null,
+    color: r.color,
+  }));
+
+  const GainTooltip = ({ active, payload, label }: any) => {
+    if (!active || !payload?.length) return null;
+    const row = rows.find(r => r.name === label);
+    const gain = row?.current !== null && row ? row.current! - row.invested : null;
+    const gainPct = gain !== null && row!.invested > 0 ? (gain / row!.invested) * 100 : null;
+    return (
+      <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 8, padding: "8px 12px", fontSize: 12 }}>
+        <div style={{ fontWeight: 700, marginBottom: 4 }}>{label}</div>
+        {payload.map((p: any) => (
+          <div key={p.name} style={{ color: p.color ?? "#374151" }}>
+            {p.name}: <strong>{fmt(p.value)}</strong>
+          </div>
+        ))}
+        {gain !== null && gainPct !== null && (
+          <div style={{ marginTop: 4, color: gain >= 0 ? "#059669" : "#dc2626", fontWeight: 600 }}>
+            Gain: {gain >= 0 ? "+" : ""}{fmt(gain)} ({gainPct >= 0 ? "+" : ""}{gainPct.toFixed(2)}%)
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 16 }}>
+      {/* Pie: allocation */}
+      <div style={{ flex: 1, minWidth: 240, background: "#fff", borderRadius: 12, padding: 16, boxShadow: "0 1px 4px #0001" }}>
+        <h3 style={{ margin: "0 0 8px", fontSize: 14, fontWeight: 700 }}>Portfolio Allocation</h3>
+        <ResponsiveContainer width="100%" height={200}>
+          <PieChart>
+            <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%"
+              outerRadius={75} innerRadius={36} paddingAngle={3}
+              labelLine={false}>
+              {pieData.map((d, i) => <Cell key={i} fill={d.color} />)}
+            </Pie>
+            <Tooltip formatter={(v: any) => fmt(Number(v))} />
+          </PieChart>
+        </ResponsiveContainer>
+        <div style={{ display: "flex", justifyContent: "center", gap: 14, flexWrap: "wrap", marginTop: 4 }}>
+          {pieData.map(d => (
+            <span key={d.name} style={{ fontSize: 11, display: "flex", alignItems: "center", gap: 4 }}>
+              <span style={{ width: 10, height: 10, borderRadius: 3, background: d.color, display: "inline-block" }} />
+              <span style={{ color: "#374151", fontWeight: 600 }}>{d.name}</span>
+              <span style={{ color: "#9ca3af" }}>{fmt(d.value)}</span>
+            </span>
+          ))}
+        </div>
+      </div>
+
+      {/* Bar: invested vs current value */}
+      <div style={{ flex: 2, minWidth: 300, background: "#fff", borderRadius: 12, padding: 16, boxShadow: "0 1px 4px #0001" }}>
+        <h3 style={{ margin: "0 0 12px", fontSize: 14, fontWeight: 700 }}>Invested vs Current Value</h3>
+        <ResponsiveContainer width="100%" height={200}>
+          <BarChart data={barData} barCategoryGap="30%">
+            <CartesianGrid strokeDasharray="3 3" vertical={false} />
+            <XAxis dataKey="name" tick={{ fontSize: 12 }} />
+            <YAxis tick={{ fontSize: 10 }} tickFormatter={(v) => `${(v / 1e6).toFixed(1)}M`} />
+            <Tooltip content={<GainTooltip />} />
+            <Legend wrapperStyle={{ fontSize: 11 }} />
+            <Bar dataKey="Invested" fill="#c7d2fe" radius={[4, 4, 0, 0]} />
+            <Bar dataKey="Current Value" radius={[4, 4, 0, 0]}>
+              {barData.map((d, i) => (
+                <Cell key={i} fill={d.color} />
+              ))}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
   );
 }
