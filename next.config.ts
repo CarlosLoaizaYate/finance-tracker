@@ -11,6 +11,7 @@ const withPWA = withPWAInit({
 const nextConfig: NextConfig = {
   reactCompiler: true,
   turbopack: {},
+  serverExternalPackages: ["@prisma/client", "@prisma/adapter-pg"],
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

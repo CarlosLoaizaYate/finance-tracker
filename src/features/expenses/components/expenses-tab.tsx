@@ -55,7 +55,7 @@ function AddRecordForm({
       border: "1px dashed #a5b4fc",
     }}>
       <div>
-        <label style={{ fontSize: 11, color: "#6b7280", display: "block", marginBottom: 2 }}>Día</label>
+        <label style={{ fontSize: 11, color: "#6b7280", display: "block", marginBottom: 2 }}>Day</label>
         <input
           type="number" min={1} max={maxDay} value={day}
           onChange={(e) => setDay(Math.min(maxDay, Math.max(1, +e.target.value)))}
@@ -63,7 +63,7 @@ function AddRecordForm({
         />
       </div>
       <div>
-        <label style={{ fontSize: 11, color: "#6b7280", display: "block", marginBottom: 2 }}>Concepto</label>
+        <label style={{ fontSize: 11, color: "#6b7280", display: "block", marginBottom: 2 }}>Description</label>
         <select value={itemId} onChange={(e) => setItemId(e.target.value)}
           style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 13, minWidth: 180 }}>
           {Object.entries(grouped).map(([catId, its]) => (
@@ -74,7 +74,7 @@ function AddRecordForm({
         </select>
       </div>
       <div>
-        <label style={{ fontSize: 11, color: "#6b7280", display: "block", marginBottom: 2 }}>Monto</label>
+        <label style={{ fontSize: 11, color: "#6b7280", display: "block", marginBottom: 2 }}>Amount</label>
         <input
           type="number" value={amount}
           onChange={(e) => setAmount(e.target.value)}
@@ -83,12 +83,12 @@ function AddRecordForm({
         />
       </div>
       <div>
-        <label style={{ fontSize: 11, color: "#6b7280", display: "block", marginBottom: 2 }}>Comentario</label>
+        <label style={{ fontSize: 11, color: "#6b7280", display: "block", marginBottom: 2 }}>Comment</label>
         <input
           type="text" value={comment}
           onChange={(e) => setComment(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && amount && onSave(itemId, day, +amount, comment)}
-          placeholder="Opcional"
+          placeholder="Optional"
           style={{ width: 160, padding: "5px 8px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 13 }}
         />
       </div>
@@ -101,14 +101,14 @@ function AddRecordForm({
             background: "#6366f1", color: "#fff", fontWeight: 600, fontSize: 13,
           }}
         >
-          Guardar
+          Save
         </button>
         <button onClick={onCancel}
           style={{
             padding: "5px 10px", borderRadius: 6, border: "1px solid #d1d5db",
             background: "none", color: "#6b7280", cursor: "pointer", fontSize: 13,
           }}>
-          Cancelar
+          Cancel
         </button>
       </div>
     </div>
@@ -136,7 +136,7 @@ function EditableDay({ value, max, onChange }: { value: number; max: number; onC
     );
   }
   return (
-    <span onClick={() => { setText(String(value)); setEditing(true); }} title="Click para editar"
+    <span onClick={() => { setText(String(value)); setEditing(true); }} title="Click to edit"
       style={{ cursor: "text", padding: "3px 8px", borderRadius: 5, background: "#ede9fe",
         color: "#4f46e5", fontWeight: 700, fontSize: 13, display: "inline-block", minWidth: 32, textAlign: "center" }}>
       {value}
@@ -165,7 +165,7 @@ function EditableText({ value, onChange, placeholder }: { value: string; onChang
     );
   }
   return (
-    <span onClick={() => { setText(value); setEditing(true); }} title="Click para editar"
+    <span onClick={() => { setText(value); setEditing(true); }} title="Click to edit"
       style={{ cursor: "text", padding: "2px 6px", borderRadius: 5, fontSize: 12,
         color: value ? "#374151" : "#d1d5db", fontStyle: value ? "normal" : "italic",
         display: "inline-block", minWidth: 60 }}>
@@ -190,7 +190,7 @@ function RemindersSection({
   return (
     <div style={{ marginBottom: 20 }}>
       <h3 style={{ fontSize: 14, fontWeight: 700, color: "#9333ea", marginBottom: 10, display: "flex", alignItems: "center", gap: 6 }}>
-        <span style={{ fontSize: 16 }}>🔔</span> Recordatorios Pendientes ({MONTHS[month]})
+        <span style={{ fontSize: 16 }}>🔔</span> Pending Reminders ({MONTHS[month]})
       </h3>
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-start" }}>
         {reminders.map(it => {
@@ -210,7 +210,7 @@ function RemindersSection({
                   <span style={{ fontSize: 14, fontWeight: 700, color: "#4c1d95" }}>
                     {it.name}
                     <span style={{ fontSize: 11, color: "#c084fc", fontWeight: 600, marginLeft: 6 }}>
-                      (Día {it.defaultDay ?? 1})
+                      (Day {it.defaultDay ?? 1})
                     </span>
                   </span>
                 </div>
@@ -224,13 +224,14 @@ function RemindersSection({
               {isPaying ? (
                 <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
                   <input autoFocus type="number" value={amount} onChange={e => setAmount(e.target.value)}
-                    placeholder="Monto" style={{ width: "100%", padding: "6px 8px", borderRadius: 6, border: "1px solid #c084fc", fontSize: 13, outline: "none" }}
+                    placeholder="Amount" style={{ width: "100%", padding: "6px 8px", borderRadius: 6, border: "1px solid #c084fc", fontSize: 13, outline: "none" }}
                     onKeyDown={e => {
                       if (e.key === "Enter" && amount) {
                         const today = new Date().getDate();
                         const maxD = new Date(year, month + 1, 0).getDate();
                         const paymentDay = Math.min(today, maxD);
-                        upsert.mutate({ itemId: it.id, day: paymentDay, month, year, realValue: +amount, comment: "Recordatorio pagado" });
+                        const existing = records.find(r => r.itemId === it.id);
+                        upsert.mutate({ id: existing?.id, itemId: it.id, day: paymentDay, month, year, realValue: +amount, comment: "Recordatorio pagado" });
                         setPayingId(null);
                       }
                       if (e.key === "Escape") setPayingId(null);
@@ -241,7 +242,8 @@ function RemindersSection({
                         const today = new Date().getDate();
                         const maxD = new Date(year, month + 1, 0).getDate();
                         const paymentDay = Math.min(today, maxD);
-                        upsert.mutate({ itemId: it.id, day: paymentDay, month, year, realValue: +amount, comment: "Recordatorio pagado" });
+                        const existing = records.find(r => r.itemId === it.id);
+                        upsert.mutate({ id: existing?.id, itemId: it.id, day: paymentDay, month, year, realValue: +amount, comment: "Recordatorio pagado" });
                         setPayingId(null);
                       }
                     }}
@@ -260,7 +262,7 @@ function RemindersSection({
                   onMouseOver={e => e.currentTarget.style.background = "#7e22ce"}
                   onMouseOut={e => e.currentTarget.style.background = "#9333ea"}
                 >
-                  Registrar Pago
+                  Register Payment
                 </button>
               )}
             </div>
@@ -313,13 +315,13 @@ function ActiveMonthTable({
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
           <thead>
             <tr style={{ background: "#f9fafb" }}>
-              <th style={{ textAlign: "center", padding: "9px 10px", fontWeight: 600, color: "#6366f1", width: 60 }}>Día</th>
-              <th style={{ textAlign: "left",   padding: "9px 12px", fontWeight: 600, color: "#374151" }}>Concepto</th>
-              <th style={{ textAlign: "left",   padding: "9px 10px", fontWeight: 600, color: "#374151" }}>Categoría</th>
-              <th style={{ textAlign: "left",   padding: "9px 10px", fontWeight: 600, color: "#9ca3af" }}>Comentario</th>
-              <th style={{ textAlign: "right",  padding: "9px 10px", fontWeight: 600, color: "#9ca3af" }}>Presupuesto</th>
+              <th style={{ textAlign: "center", padding: "9px 10px", fontWeight: 600, color: "#6366f1", width: 60 }}>Day</th>
+              <th style={{ textAlign: "left",   padding: "9px 12px", fontWeight: 600, color: "#374151" }}>Description</th>
+              <th style={{ textAlign: "left",   padding: "9px 10px", fontWeight: 600, color: "#374151" }}>Category</th>
+              <th style={{ textAlign: "left",   padding: "9px 10px", fontWeight: 600, color: "#9ca3af" }}>Comment</th>
+              <th style={{ textAlign: "right",  padding: "9px 10px", fontWeight: 600, color: "#9ca3af" }}>Budget</th>
               <th style={{ textAlign: "right",  padding: "9px 10px", fontWeight: 600, color: "#6366f1" }}>
-                Real ({MONTHS[month]})
+                Actual ({MONTHS[month]})
               </th>
               <th style={{ width: 32 }} />
             </tr>
@@ -328,7 +330,7 @@ function ActiveMonthTable({
             {sorted.length === 0 && (
               <tr>
                 <td colSpan={7} style={{ padding: "18px 14px", color: "#9ca3af", fontSize: 13, textAlign: "center" }}>
-                  Sin gastos registrados para {MONTHS[month]} {year}.
+                  No expenses recorded for {MONTHS[month]} {year}.
                 </td>
               </tr>
             )}
@@ -362,7 +364,7 @@ function ActiveMonthTable({
                   <td style={{ padding: "4px 10px" }}>
                     <EditableText
                       value={rec.comment}
-                      placeholder="agregar nota..."
+                      placeholder="add note..."
                       onChange={(v) => upsert.mutate({ id: rec.id, comment: v })}
                     />
                   </td>
@@ -379,7 +381,7 @@ function ActiveMonthTable({
                   <td style={{ textAlign: "center", paddingRight: 6 }}>
                     <button
                       onClick={() => remove.mutate(rec.id)}
-                      title="Eliminar registro"
+                      title="Delete record"
                       style={{ background: "none", border: "none", cursor: "pointer", color: "#ef4444", fontSize: 14 }}
                     >
                       ✕
@@ -421,7 +423,7 @@ function ActiveMonthTable({
               background: "none", color: "#6366f1", cursor: "pointer", fontSize: 12, fontWeight: 600,
             }}
           >
-            + Agregar gasto
+            + Add expense
           </button>
         )}
       </div>
@@ -446,7 +448,7 @@ function InlineItemSelect({
     return (
       <span
         onClick={() => setEditing(true)}
-        title="Click para cambiar"
+        title="Click to change"
         style={{ cursor: "pointer", padding: "2px 6px", borderRadius: 5,
           color: "#111827", fontWeight: 500, borderBottom: "1px dashed #a5b4fc",
           display: "inline-block" }}
@@ -494,7 +496,7 @@ function InlineCategorySelect({
 
   if (!editing) {
     return (
-      <span onClick={() => setEditing(true)} title="Click para cambiar categoría"
+      <span onClick={() => setEditing(true)} title="Click to change category"
         style={{ cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 5 }}>
         {cat && <span style={{ width: 8, height: 8, borderRadius: 2, background: cat.color }} />}
         <span style={{ fontSize: 12, color: "#6b7280", borderBottom: "1px dashed #d1d5db" }}>
@@ -575,33 +577,33 @@ function MonthlyHistorySection({
         display: "flex", justifyContent: "space-between", alignItems: "center",
         padding: "12px 16px", borderBottom: "1px solid #f3f4f6", flexWrap: "wrap", gap: 10,
       }}>
-        <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#111827" }}>Histórico Mensual</h3>
+        <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#111827" }}>Monthly History</h3>
         <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <label style={{ fontSize: 12, fontWeight: 600, color: "#6b7280" }}>Desde:</label>
+            <label style={{ fontSize: 12, fontWeight: 600, color: "#6b7280" }}>From:</label>
             <input type="month" value={histFrom} onChange={(e) => setHistFrom(e.target.value)}
               style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 12 }} />
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <label style={{ fontSize: 12, fontWeight: 600, color: "#6b7280" }}>Hasta:</label>
+            <label style={{ fontSize: 12, fontWeight: 600, color: "#6b7280" }}>To:</label>
             <input type="month" value={histTo} onChange={(e) => setHistTo(e.target.value)}
               style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 12 }} />
           </div>
         </div>
       </div>
 
-      {!valid && <p style={{ padding: "16px", fontSize: 13, color: "#9ca3af" }}>Seleccioná un rango válido.</p>}
+      {!valid && <p style={{ padding: "16px", fontSize: 13, color: "#9ca3af" }}>Select a valid range.</p>}
       {valid && monthSummaries.every((s) => s.count === 0) && (
-        <p style={{ padding: "16px", fontSize: 13, color: "#9ca3af" }}>Sin registros en ese rango.</p>
+        <p style={{ padding: "16px", fontSize: 13, color: "#9ca3af" }}>No records in that range.</p>
       )}
       {valid && monthSummaries.some((s) => s.count > 0) && (
         <div style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
             <thead>
               <tr style={{ background: "#f9fafb" }}>
-                <th style={{ textAlign: "left",  padding: "8px 14px", fontWeight: 600, color: "#374151" }}>Mes</th>
+                <th style={{ textAlign: "left",  padding: "8px 14px", fontWeight: 600, color: "#374151" }}>Month</th>
                 <th style={{ textAlign: "right", padding: "8px 10px", fontWeight: 600, color: "#374151" }}>Total</th>
-                <th style={{ textAlign: "right", padding: "8px 10px", fontWeight: 600, color: "#9ca3af" }}>Registros</th>
+                <th style={{ textAlign: "right", padding: "8px 10px", fontWeight: 600, color: "#9ca3af" }}>Records</th>
                 {cats.map((c) => (
                   <th key={c.id} style={{ textAlign: "right", padding: "8px 10px", fontWeight: 600, color: c.color, whiteSpace: "nowrap" }}>
                     {c.name}
@@ -675,17 +677,17 @@ function YearlyHistorySection({
         display: "flex", justifyContent: "space-between", alignItems: "center",
         padding: "12px 16px", borderBottom: "1px solid #f3f4f6", flexWrap: "wrap", gap: 10,
       }}>
-        <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#111827" }}>Histórico Anual</h3>
+        <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#111827" }}>Yearly History</h3>
         <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <label style={{ fontSize: 12, fontWeight: 600, color: "#6b7280" }}>Desde:</label>
+            <label style={{ fontSize: 12, fontWeight: 600, color: "#6b7280" }}>From:</label>
             <select value={fromYear} onChange={(e) => setFromYear(+e.target.value)}
               style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 12 }}>
               {yearOptions.map((y) => <option key={y} value={y}>{y}</option>)}
             </select>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <label style={{ fontSize: 12, fontWeight: 600, color: "#6b7280" }}>Hasta:</label>
+            <label style={{ fontSize: 12, fontWeight: 600, color: "#6b7280" }}>To:</label>
             <select value={toYear} onChange={(e) => setToYear(+e.target.value)}
               style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 12 }}>
               {yearOptions.map((y) => <option key={y} value={y}>{y}</option>)}
@@ -694,18 +696,18 @@ function YearlyHistorySection({
         </div>
       </div>
 
-      {!valid && <p style={{ padding: "16px", fontSize: 13, color: "#9ca3af" }}>Seleccioná un rango válido.</p>}
+      {!valid && <p style={{ padding: "16px", fontSize: 13, color: "#9ca3af" }}>Select a valid range.</p>}
       {valid && yearSummaries.every((s) => s.count === 0) && (
-        <p style={{ padding: "16px", fontSize: 13, color: "#9ca3af" }}>Sin registros en ese rango.</p>
+        <p style={{ padding: "16px", fontSize: 13, color: "#9ca3af" }}>No records in that range.</p>
       )}
       {valid && yearSummaries.some((s) => s.count > 0) && (
         <div style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
             <thead>
               <tr style={{ background: "#f9fafb" }}>
-                <th style={{ textAlign: "left",  padding: "8px 14px", fontWeight: 600, color: "#374151" }}>Año</th>
+                <th style={{ textAlign: "left",  padding: "8px 14px", fontWeight: 600, color: "#374151" }}>Year</th>
                 <th style={{ textAlign: "right", padding: "8px 10px", fontWeight: 600, color: "#374151" }}>Total</th>
-                <th style={{ textAlign: "right", padding: "8px 10px", fontWeight: 600, color: "#9ca3af" }}>Registros</th>
+                <th style={{ textAlign: "right", padding: "8px 10px", fontWeight: 600, color: "#9ca3af" }}>Records</th>
                 {cats.map((c) => (
                   <th key={c.id} style={{ textAlign: "right", padding: "8px 10px", fontWeight: 600, color: c.color, whiteSpace: "nowrap" }}>
                     {c.name}
@@ -758,7 +760,7 @@ export default function ExpensesTab() {
       {/* ── Top toolbar: year + month selector ── */}
       <div style={{ display: "flex", gap: 8, marginBottom: 14, alignItems: "center", flexWrap: "wrap" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 6, marginLeft: "auto" }}>
-          <label style={{ fontSize: 12, fontWeight: 600, color: "#374151" }}>Año:</label>
+          <label style={{ fontSize: 12, fontWeight: 600, color: "#374151" }}>Year:</label>
           <select
             value={expenseYear}
             onChange={(e) => setExpenseYear(+e.target.value)}
@@ -766,7 +768,7 @@ export default function ExpensesTab() {
           >
             {[2024, 2025, 2026, 2027].map((y) => <option key={y} value={y}>{y}</option>)}
           </select>
-          <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", marginLeft: 8 }}>Mes:</label>
+          <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", marginLeft: 8 }}>Month:</label>
           <select
             value={expenseMonth}
             onChange={(e) => setExpenseMonth(+e.target.value)}

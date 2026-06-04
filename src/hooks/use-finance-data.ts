@@ -108,7 +108,7 @@ export interface InvestmentType {
   name: string;
 }
 
-export interface Investment {
+export interface Stock {
   id: string;
   name: string;
   typeId: string;
@@ -119,13 +119,26 @@ export interface Investment {
   active: boolean;
 }
 
-export interface InvestmentSnapshot {
+export interface StockTransaction {
   id: string;
+  investmentId: string;
+  quantity: number;
+  priceUnit: number;
+  commission: number;
+  transactionDate: string;
+  notes: string;
+  createdAt: string;
+  updatedAt: string;
+  userId: string;
+}
+
+export interface StockPriceSnapshot {
+  id: string;
+  investmentId: string;
   month: number;
   year: number;
-  currentValue: number;
-  contribution: number;
-  investmentId: string;
+  pricePerShare: number;
+  createdAt: string;
 }
 
 // ── Query Hooks ───────────────────────────────────────────────────────
@@ -153,7 +166,7 @@ export function useExpenseRecords(year: number) {
 
 export function useExpenseRecordsRange(
   fromMonth: number, fromYear: number,
-  toMonth: number,   toYear: number,
+  toMonth: number, toYear: number,
 ) {
   return useQuery<ExpenseRecord[]>({
     queryKey: ["expense-records-range", fromMonth, fromYear, toMonth, toYear],
@@ -162,10 +175,10 @@ export function useExpenseRecordsRange(
   });
 }
 
-export function useInvestments() {
-  return useQuery<Investment[]>({
-    queryKey: ["investments"],
-    queryFn: () => get("/api/investments"),
+export function useStocks() {
+  return useQuery<Stock[]>({
+    queryKey: ["stocks"],
+    queryFn: () => get("/api/stocks"),
   });
 }
 
@@ -176,12 +189,6 @@ export function useInvestmentTypes() {
   });
 }
 
-export function useInvestmentSnapshots(year: number | "all") {
-  return useQuery<InvestmentSnapshot[]>({
-    queryKey: ["investment-snapshots", year],
-    queryFn: () => get(`/api/investment-snapshots?year=${year}`),
-  });
-}
 
 // ── Mutation Hooks ────────────────────────────────────────────────────
 
@@ -225,20 +232,20 @@ export function useUpsertExpenseRecord() {
   });
 }
 
-export function useAddInvestment() {
+export function useAddStock() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: { name: string; typeId: string; color: string; investedCapital: number; month: number; year: number }) =>
-      post("/api/investments", data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["investments"] }),
+    mutationFn: (data: { name: string; typeId: string; color: string; investedCapital?: number }) =>
+      post("/api/stocks", data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["stocks"] }),
   });
 }
 
-export function useRemoveInvestment() {
+export function useRemoveStock() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => del(`/api/investments?id=${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["investments"] }),
+    mutationFn: (id: string) => del(`/api/stocks?id=${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["stocks"] }),
   });
 }
 
@@ -258,19 +265,6 @@ export function useDeleteInvestmentType() {
   });
 }
 
-export function useUpsertSnapshot() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (data: {
-      investmentId: string;
-      month: number;
-      year: number;
-      currentValue: number;
-      contribution: number;
-    }) => put("/api/investment-snapshots", data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["investment-snapshots"] }),
-  });
-}
 
 export function useSeedData() {
   const qc = useQueryClient();
@@ -396,4 +390,286 @@ export function useAddBudgetHistory() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["expense-items"] }),
   });
 }
+
+// ── Stock Transactions Hooks ──────────────────────────────────────────
+
+export function useStockTransactions(investmentId?: string) {
+  return useQuery<StockTransaction[]>({
+    queryKey: ["stock-transactions", investmentId],
+    queryFn: () => {
+      const url = investmentId
+        ? `/api/stock-transactions?investmentId=${investmentId}`
+        : "/api/stock-transactions";
+      return get(url);
+    },
+  });
+}
+
+export function useAddStockTransaction() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: {
+      investmentId: string;
+      quantity: number;
+      priceUnit: number;
+      commission: number;
+      transactionDate: string;
+      notes?: string;
+    }) => post("/api/stock-transactions", data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["stock-transactions"] });
+      qc.invalidateQueries({ queryKey: ["investment-metrics"] });
+    },
+  });
+}
+
+export function useDeleteStockTransaction() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => del(`/api/stock-transactions/${id}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["stock-transactions"] });
+      qc.invalidateQueries({ queryKey: ["investment-metrics"] });
+    },
+  });
+}
+
+export function useStockPriceSnapshots(investmentId?: string) {
+  return useQuery<StockPriceSnapshot[]>({
+    queryKey: ["stock-price-snapshots", investmentId ?? "all"],
+    queryFn: () => {
+      const url = investmentId
+        ? `/api/stock-price-snapshots?investmentId=${investmentId}`
+        : "/api/stock-price-snapshots";
+      return get(url);
+    },
+  });
+}
+
+export function useUpsertStockPriceSnapshot() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { investmentId: string; month: number; year: number; pricePerShare: number }) =>
+      post("/api/stock-price-snapshots", data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["stock-price-snapshots"] }),
+  });
+}
+
+export function useDeleteStockPriceSnapshot() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => del(`/api/stock-price-snapshots?id=${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["stock-price-snapshots"] }),
+  });
+}
+
+// ── Funds Hooks ───────────────────────────────────────────────────────
+
+export interface FundSnapshot {
+  id: string;
+  fundId: string;
+  day: number;
+  month: number;
+  year: number;
+  currentValue: number;
+  contribution: number;
+  createdAt: string;
+}
+
+export interface Fund {
+  id: string;
+  name: string;
+  color: string;
+  baseCapital: number;
+  startDate: string;
+  typeId: string | null;
+  type: InvestmentType | null;
+  createdAt: string;
+  snapshots: FundSnapshot[];
+}
+
+export function useFunds() {
+  return useQuery<Fund[]>({
+    queryKey: ["funds"],
+    queryFn: () => get("/api/funds"),
+  });
+}
+
+export function useAddFund() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { name: string; color: string; baseCapital: number; typeId?: string; startDate?: string }) =>
+      post("/api/funds", data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["funds"] }),
+  });
+}
+
+export function useDeleteFund() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => del(`/api/funds?id=${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["funds"] }),
+  });
+}
+
+export function useUpsertFundSnapshot() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { fundId: string; day: number; month: number; year: number; currentValue: number; contribution: number }) =>
+      post("/api/fund-snapshots", data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["funds"] }),
+  });
+}
+
+export function useDeleteFundSnapshot() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => del(`/api/fund-snapshots?id=${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["funds"] }),
+  });
+}
+
+// ── Fixed Deposits (CDTs) Hooks ───────────────────────────────────────
+
+export interface FixedDepositSnapshot {
+  id: string;
+  depositId: string;
+  month: number;
+  year: number;
+  gain: number;
+  createdAt: string;
+}
+
+export interface FixedDeposit {
+  id: string;
+  groupId: string;
+  capital: number;
+  capitalAdded: number;
+  interestRate: number;
+  term: number;
+  termUnit: "DAYS" | "MONTHS";
+  startDate: string;
+  endDate: string;
+  earnedInterest: number | null;
+  notes: string;
+  createdAt: string;
+  snapshots: FixedDepositSnapshot[];
+}
+
+export interface FixedDepositGroup {
+  id: string;
+  name: string;
+  entity: string;
+  createdAt: string;
+  cycles: FixedDeposit[];
+}
+
+export function useFixedDepositGroups() {
+  return useQuery<FixedDepositGroup[]>({
+    queryKey: ["fixed-deposit-groups"],
+    queryFn: () => get("/api/fixed-deposit-groups"),
+  });
+}
+
+export function useAddFixedDepositGroup() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: {
+      name: string;
+      entity: string;
+      capital: number;
+      interestRate: number;
+      term: number;
+      termUnit: "DAYS" | "MONTHS";
+      startDate: string;
+      endDate: string;
+    }) => post("/api/fixed-deposit-groups", data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["fixed-deposit-groups"] }),
+  });
+}
+
+export function useDeleteFixedDepositGroup() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => del(`/api/fixed-deposit-groups?id=${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["fixed-deposit-groups"] }),
+  });
+}
+
+export function useAddFixedDepositCycle() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: {
+      groupId: string;
+      capital: number;
+      capitalAdded: number;
+      interestRate: number;
+      term: number;
+      termUnit: "DAYS" | "MONTHS";
+      startDate: string;
+      endDate: string;
+      notes?: string;
+    }) => post("/api/fixed-deposits", data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["fixed-deposit-groups"] }),
+  });
+}
+
+export function useCloseCycle() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { id: string; earnedInterest: number | null }) =>
+      put("/api/fixed-deposits", data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["fixed-deposit-groups"] }),
+  });
+}
+
+export function useUpdateCycleEndDate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { id: string; endDate: string }) =>
+      put("/api/fixed-deposits", data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["fixed-deposit-groups"] }),
+  });
+}
+
+export function useDeleteFixedDeposit() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => del(`/api/fixed-deposits?id=${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["fixed-deposit-groups"] }),
+  });
+}
+
+export function useFixedDepositSnapshots(depositId: string) {
+  return useQuery<FixedDepositSnapshot[]>({
+    queryKey: ["fixed-deposit-snapshots", depositId],
+    queryFn: () => get(`/api/fixed-deposit-snapshots?depositId=${depositId}`),
+    enabled: !!depositId,
+  });
+}
+
+export function useUpsertFixedDepositSnapshot() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { depositId: string; month: number; year: number; gain: number }) =>
+      put("/api/fixed-deposit-snapshots", data),
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ["fixed-deposit-snapshots", vars.depositId] });
+      qc.invalidateQueries({ queryKey: ["fixed-deposit-groups"] });
+    },
+  });
+}
+
+export function useDeleteFixedDepositSnapshot() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ depositId, month, year }: { depositId: string; month: number; year: number }) =>
+      del(`/api/fixed-deposit-snapshots?depositId=${depositId}&month=${month}&year=${year}`),
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ["fixed-deposit-snapshots", vars.depositId] });
+      qc.invalidateQueries({ queryKey: ["fixed-deposit-groups"] });
+    },
+  });
+}
+
 

@@ -47,7 +47,7 @@ export async function DELETE(req: NextRequest) {
   if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
 
   // Prevent deleting if there are active investments tied to this type
-  const dependentInvestments = await prisma.investment.count({
+  const dependentInvestments = await prisma.stock.count({
     where: { typeId: id, active: true }
   });
 

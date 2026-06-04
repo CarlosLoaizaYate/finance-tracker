@@ -6,7 +6,6 @@ import { createClient } from "@/lib/supabase";
 import { useDashboardStore } from "@/stores/dashboard-store";
 import {
   useExpenseItems,
-  useInvestments,
   useSeedData,
 } from "@/hooks/use-finance-data";
 import TabButton from "@/components/ui/tab-button";
@@ -45,13 +44,9 @@ export default function DashboardPage() {
 function DashboardContent() {
   const { tab, setTab, year } = useDashboardStore();
   const { data: items = [], isLoading: itemsLoading } = useExpenseItems();
-  const { data: investments = [], isLoading: invLoading } = useInvestments();
   const seedMut = useSeedData();
 
-  const isLoading = itemsLoading || invLoading;
-
-  // Loading state
-  if (isLoading) {
+  if (itemsLoading) {
     return (
       <div style={{ minHeight: "100vh", display: "flex", alignItems: "center",
         justifyContent: "center", background: "#f3f4f6" }}>
@@ -61,7 +56,7 @@ function DashboardContent() {
   }
 
   // Seed prompt (no data)
-  if (items.length === 0 && investments.length === 0) {
+  if (items.length === 0) {
     return (
       <div style={{ minHeight: "100vh", display: "flex", alignItems: "center",
         justifyContent: "center", background: "#f3f4f6", flexDirection: "column", gap: 16 }}>
@@ -85,9 +80,22 @@ function DashboardContent() {
 
         {/* Header */}
         <div style={{ marginBottom: 20 }}>
-          <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: "#111827" }}>
-            Finance Tracker
-          </h1>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: "#111827" }}>
+              Finance Tracker
+            </h1>
+            {process.env.NEXT_PUBLIC_APP_ENV === "development" ? (
+              <span style={{
+                padding: "2px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700,
+                background: "#fef3c7", color: "#92400e", border: "1px solid #fcd34d",
+              }}>DEV</span>
+            ) : (
+              <span style={{
+                padding: "2px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700,
+                background: "#d1fae5", color: "#065f46", border: "1px solid #6ee7b7",
+              }}>PROD</span>
+            )}
+          </div>
           <p style={{ margin: "4px 0 0", color: "#6b7280", fontSize: 13 }}>
             {year} · COP ·
             <span style={{ color: "#6366f1", fontWeight: 600 }}> Click a purple cell to edit</span>
@@ -106,7 +114,7 @@ function DashboardContent() {
             Investments
           </TabButton>
           <TabButton active={tab === "settings"} onClick={() => setTab("settings")}>
-            Configuración
+            Settings
           </TabButton>
         </div>
 

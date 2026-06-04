@@ -14,12 +14,18 @@ model User {
   categories          Category[]
   expenseItems        ExpenseItem[]
   expenseRecords      ExpenseRecord[]
-  investments         Investment[]
+  stocks              Stock[]
   investmentTypes     InvestmentType[]
-  investmentSnapshots InvestmentSnapshot[]
   incomeSources       IncomeSource[]
   incomeHistory       IncomeHistory[]
   budgetHistory       BudgetHistory[]
+  stockTransactions   StockTransaction[]
+  stockPriceSnapshots StockPriceSnapshot[]
+  funds               Fund[]
+  fundSnapshots       FundSnapshot[]
+  fixedDepositGroups     FixedDepositGroup[]
+  fixedDeposits          FixedDeposit[]
+  fixedDepositSnapshots  FixedDepositSnapshot[]
 }
 
 model Category {
@@ -62,7 +68,7 @@ model ExpenseRecord {
   user      User        @relation(fields: [userId], references: [id])
 }
 
-model Investment {
+model Stock {
   id              String               @id @default(uuid())
   name            String
   typeId          String
@@ -73,30 +79,18 @@ model Investment {
   active          Boolean              @default(true)
   userId          String
   user            User                 @relation(fields: [userId], references: [id])
-  snapshots       InvestmentSnapshot[]
+  transactions    StockTransaction[]
+  priceSnapshots  StockPriceSnapshot[]
 }
 
-
-model InvestmentSnapshot {
-  id           String     @id @default(uuid())
-  month        Int
-  year         Int
-  currentValue Int
-  contribution Int        @default(0)
-  investmentId String
-  userId       String
-  investment   Investment @relation(fields: [investmentId], references: [id])
-  user         User       @relation(fields: [userId], references: [id])
-
-  @@unique([investmentId, month, year])
-}
 
 model InvestmentType {
   id          String       @id @default(uuid())
   name        String
   userId      String
   user        User         @relation(fields: [userId], references: [id])
-  investments Investment[]
+  stocks      Stock[]
+  funds       Fund[]
 
   @@unique([name, userId])
 }
@@ -135,4 +129,106 @@ model BudgetHistory {
   user           User        @relation(fields: [userId], references: [id])
 
   @@unique([itemId, effectiveMonth, effectiveYear])
+}
+
+model StockTransaction {
+  id              String     @id @default(uuid())
+  investmentId    String
+  quantity        Int        // Cantidad de acciones compradas
+  priceUnit       Int        // Precio por acción (en centavos)
+  commission      Int        // Comisión de la transacción (en centavos)
+  transactionDate DateTime   // Fecha de la compra
+  notes           String     @default("")
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+  userId          String
+
+  stock           Stock  @relation(fields: [investmentId], references: [id], onDelete: Cascade)
+  user            User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model StockPriceSnapshot {
+  id            String     @id @default(uuid())
+  investmentId  String
+  month         Int
+  year          Int
+  pricePerShare Int        // price per share at this month
+  createdAt     DateTime   @default(now())
+  userId        String
+  stock         Stock  @relation(fields: [investmentId], references: [id], onDelete: Cascade)
+  user          User   @relation(fields: [userId], references: [id])
+
+  @@unique([investmentId, month, year])
+}
+
+model Fund {
+  id          String         @id @default(uuid())
+  name        String
+  color       String
+  baseCapital Int
+  startDate   DateTime       @default(now())
+  typeId      String?
+  createdAt   DateTime       @default(now())
+  userId      String
+  user        User           @relation(fields: [userId], references: [id])
+  type        InvestmentType? @relation(fields: [typeId], references: [id])
+  snapshots   FundSnapshot[]
+}
+
+model FundSnapshot {
+  id           String   @id @default(uuid())
+  fundId       String
+  day          Int      @default(1)
+  month        Int
+  year         Int
+  currentValue Int
+  contribution Int      @default(0)
+  createdAt    DateTime @default(now())
+  userId       String
+  fund         Fund     @relation(fields: [fundId], references: [id], onDelete: Cascade)
+  user         User     @relation(fields: [userId], references: [id])
+
+}
+
+model FixedDepositGroup {
+  id        String         @id @default(uuid())
+  name      String
+  entity    String
+  createdAt DateTime       @default(now())
+  userId    String
+  user      User           @relation(fields: [userId], references: [id])
+  cycles    FixedDeposit[]
+}
+
+model FixedDeposit {
+  id             String                  @id @default(uuid())
+  groupId        String
+  capital        Int
+  capitalAdded   Int
+  interestRate   Float
+  term           Int                     @default(90)
+  termUnit       String                  @default("DAYS")
+  startDate      DateTime
+  endDate        DateTime
+  earnedInterest Int?
+  notes          String                  @default("")
+  createdAt      DateTime                @default(now())
+  userId         String
+  group          FixedDepositGroup       @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user           User                    @relation(fields: [userId], references: [id])
+  snapshots      FixedDepositSnapshot[]
+}
+
+model FixedDepositSnapshot {
+  id        String       @id @default(uuid())
+  depositId String
+  month     Int
+  year      Int
+  gain      Int
+  createdAt DateTime     @default(now())
+  userId    String
+  deposit   FixedDeposit @relation(fields: [depositId], references: [id], onDelete: Cascade)
+  user      User         @relation(fields: [userId], references: [id])
+
+  @@unique([depositId, month, year])
 }
