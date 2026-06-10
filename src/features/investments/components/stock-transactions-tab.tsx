@@ -6,6 +6,7 @@ import {
     useInvestmentTypes,
     useAddStock,
     useRemoveStock,
+    useUpdateStock,
     useStockTransactions,
     useAddStockTransaction,
     useDeleteStockTransaction,
@@ -339,7 +340,10 @@ function StockDetail({ investment, onBack }: { investment: Stock; onBack: () => 
     const { data: priceSnaps = [] } = useStockPriceSnapshots(investment.id);
     const deleteTransaction = useDeleteStockTransaction();
     const deletePriceSnap = useDeleteStockPriceSnapshot();
+    const updateStock = useUpdateStock();
     const [showAddPurchase, setShowAddPurchase] = useState(false);
+    const [editingCommission, setEditingCommission] = useState(false);
+    const [commissionInput, setCommissionInput] = useState(String(investment.sellCommission));
 
     const sortedTxs = useMemo(
         () => [...transactions].sort((a, b) => new Date(b.transactionDate).getTime() - new Date(a.transactionDate).getTime()),
@@ -364,6 +368,16 @@ function StockDetail({ investment, onBack }: { investment: Stock; onBack: () => 
     const totalGainPct = totalGain != null && totalCost > 0 ? (totalGain / totalCost) * 100 : 0;
     const sharesGain = latestValue > 0 ? latestValue - totalSharesCost : null;
     const sharesGainPct = sharesGain != null && totalSharesCost > 0 ? (sharesGain / totalSharesCost) * 100 : 0;
+    const sellComm = investment.sellCommission;
+    const netIfSold = totalGain !== null ? totalGain - sellComm : null;
+    const netIfSoldPct = netIfSold !== null && totalCost > 0 ? (netIfSold / totalCost) * 100 : null;
+
+    const handleSaveCommission = async () => {
+        const val = parseInt(commissionInput);
+        if (isNaN(val) || val < 0) return;
+        await updateStock.mutateAsync({ id: investment.id, sellCommission: val });
+        setEditingCommission(false);
+    };
 
     const handleDeleteTx = async (id: string) => {
         if (!confirm("Delete this purchase?")) return;
@@ -406,7 +420,7 @@ function StockDetail({ investment, onBack }: { investment: Stock; onBack: () => 
                 <div style={{ background: "#fff", borderRadius: 10, padding: 12, boxShadow: "0 1px 4px #0001", borderTop: "3px solid #f59e0b" }}>
                     <div style={{ fontSize: 10, color: "#6b7280", fontWeight: 600, marginBottom: 4 }}>SHARES COST <span style={{ color: "#9ca3af" }}>(sin comisión)</span></div>
                     <div style={{ fontSize: 16, fontWeight: 700, color: "#f59e0b" }}>{fmt(totalSharesCost)}</div>
-                    <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 2 }}>Comisiones: {fmt(totalCommissions)}</div>
+                    <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 2 }}>Com. compra: {fmt(totalCommissions)}</div>
                     {sharesGain != null && (
                         <div style={{ fontSize: 12, marginTop: 4 }}>
                             <GainBadge gain={sharesGain} pct={sharesGainPct} />
@@ -416,12 +430,55 @@ function StockDetail({ investment, onBack }: { investment: Stock; onBack: () => 
 
                 {/* Cost Basis card */}
                 <div style={{ background: "#fff", borderRadius: 10, padding: 12, boxShadow: "0 1px 4px #0001", borderTop: "3px solid #6366f1" }}>
-                    <div style={{ fontSize: 10, color: "#6b7280", fontWeight: 600, marginBottom: 4 }}>COST BASIS <span style={{ color: "#9ca3af" }}>(con comisión)</span></div>
+                    <div style={{ fontSize: 10, color: "#6b7280", fontWeight: 600, marginBottom: 4 }}>COST BASIS <span style={{ color: "#9ca3af" }}>(con com. compra)</span></div>
                     <div style={{ fontSize: 16, fontWeight: 700, color: "#6366f1" }}>{fmt(totalCost)}</div>
                     {totalGain != null && (
                         <div style={{ fontSize: 12, marginTop: 4 }}>
                             <GainBadge gain={totalGain} pct={totalGainPct} />
                         </div>
+                    )}
+                </div>
+
+                {/* Net if sold card */}
+                <div style={{ background: "#fff", borderRadius: 10, padding: 12, boxShadow: "0 1px 4px #0001", borderTop: "3px solid #dc2626" }}>
+                    <div style={{ fontSize: 10, color: "#6b7280", fontWeight: 600, marginBottom: 4 }}>
+                        NET IF SOLD
+                        <span style={{ color: "#9ca3af", marginLeft: 4 }}>
+                            {editingCommission ? (
+                                <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                                    <input
+                                        type="number"
+                                        value={commissionInput}
+                                        onChange={(e) => setCommissionInput(e.target.value)}
+                                        style={{ width: 80, padding: "1px 4px", borderRadius: 4, border: "1px solid #d1d5db", fontSize: 11 }}
+                                        onKeyDown={(e) => { if (e.key === "Enter") handleSaveCommission(); if (e.key === "Escape") setEditingCommission(false); }}
+                                        autoFocus
+                                    />
+                                    <button onClick={handleSaveCommission} style={{ fontSize: 10, color: "#059669", background: "none", border: "none", cursor: "pointer", fontWeight: 700 }}>✓</button>
+                                    <button onClick={() => setEditingCommission(false)} style={{ fontSize: 10, color: "#9ca3af", background: "none", border: "none", cursor: "pointer" }}>✕</button>
+                                </span>
+                            ) : (
+                                <span
+                                    onClick={() => { setCommissionInput(String(sellComm)); setEditingCommission(true); }}
+                                    style={{ cursor: "pointer", textDecoration: "underline dotted", color: "#9ca3af" }}
+                                    title="Click to edit sell commission"
+                                >
+                                    com. venta: {fmt(sellComm)}
+                                </span>
+                            )}
+                        </span>
+                    </div>
+                    {netIfSold !== null && netIfSoldPct !== null ? (
+                        <>
+                            <div style={{ fontSize: 16, fontWeight: 700, color: netIfSold >= 0 ? "#059669" : "#dc2626" }}>
+                                {netIfSold >= 0 ? "+" : ""}{fmt(netIfSold)}
+                            </div>
+                            <div style={{ fontSize: 11, marginTop: 2 }}>
+                                <GainBadge gain={netIfSold} pct={netIfSoldPct} />
+                            </div>
+                        </>
+                    ) : (
+                        <div style={{ fontSize: 13, color: "#9ca3af", marginTop: 4 }}>—</div>
                     )}
                 </div>
             </div>
@@ -641,6 +698,8 @@ function StockList({
                         const latestValue = latestPrice > 0 ? latestPrice * totalShares : 0;
                         const gain = latestValue > 0 ? latestValue - totalCost : null;
                         const gainPct = gain != null && totalCost > 0 ? (gain / totalCost) * 100 : 0;
+                        const netIfSold = gain !== null ? gain - inv.sellCommission : null;
+                        const netIfSoldPct = netIfSold !== null && totalCost > 0 ? (netIfSold / totalCost) * 100 : 0;
 
                         return (
                             <div key={inv.id} onClick={() => onSelect(inv.id)}
@@ -681,6 +740,12 @@ function StockList({
                                         <div style={{ fontSize: 10, color: "#9ca3af", fontWeight: 600 }}>GAIN / LOSS</div>
                                         <div style={{ fontSize: 14 }}>
                                             {gain != null ? <GainBadge gain={gain} pct={gainPct} /> : "—"}
+                                        </div>
+                                    </div>
+                                    <div style={{ gridColumn: "1 / -1", borderTop: "1px solid #f3f4f6", paddingTop: 8 }}>
+                                        <div style={{ fontSize: 10, color: "#dc2626", fontWeight: 600 }}>NET IF SOLD <span style={{ color: "#9ca3af", fontWeight: 400 }}>(-{fmt(inv.sellCommission)} com.)</span></div>
+                                        <div style={{ fontSize: 13 }}>
+                                            {netIfSold != null ? <GainBadge gain={netIfSold} pct={netIfSoldPct} /> : "—"}
                                         </div>
                                     </div>
                                 </div>

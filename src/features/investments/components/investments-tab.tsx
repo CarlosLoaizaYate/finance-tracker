@@ -94,6 +94,7 @@ interface CategoryItem {
   label?: string;
   invested: number;
   currentValue: number | null;
+  sellCommission?: number;
 }
 
 function GainCell({ gain, pct }: { gain: number; pct: number }) {
@@ -113,6 +114,10 @@ function CategoryBlock({ title, accentColor, items, showLabel }: {
   const totalCurrent = withValue.length > 0 ? withValue.reduce((s, i) => s + (i.currentValue ?? 0), 0) : null;
   const gain = totalCurrent !== null ? totalCurrent - totalInvested : null;
   const gainPct = gain !== null && totalInvested > 0 ? (gain / totalInvested) * 100 : 0;
+  const hasSellComm = items.some(i => i.sellCommission !== undefined);
+  const totalSellComm = items.reduce((s, i) => s + (i.sellCommission ?? 0), 0);
+  const totalNet = gain !== null && hasSellComm ? gain - totalSellComm : null;
+  const totalNetPct = totalNet !== null && totalInvested > 0 ? (totalNet / totalInvested) * 100 : null;
 
   return (
     <div style={{ background: "#fff", borderRadius: 12, boxShadow: "0 1px 4px #0001", overflow: "hidden", marginBottom: 12 }}>
@@ -122,6 +127,9 @@ function CategoryBlock({ title, accentColor, items, showLabel }: {
           <span style={{ color: "#6b7280" }}>Invested: <strong style={{ color: accentColor }}>{fmt(totalInvested)}</strong></span>
           <span style={{ color: "#6b7280" }}>Current Value: <strong style={{ color: "#059669" }}>{totalCurrent !== null ? fmt(totalCurrent) : "—"}</strong></span>
           {gain !== null && <span style={{ color: "#6b7280" }}>Gain/Loss: <GainCell gain={gain} pct={gainPct} /></span>}
+          {totalNet !== null && totalNetPct !== null && (
+            <span style={{ color: "#6b7280" }}>Net if sold: <GainCell gain={totalNet} pct={totalNetPct} /></span>
+          )}
         </div>
       </div>
       {items.length === 0 ? (
@@ -136,6 +144,7 @@ function CategoryBlock({ title, accentColor, items, showLabel }: {
                 <th style={{ textAlign: "right", padding: "6px 16px", fontWeight: 600, color: "#6b7280" }}>Invested</th>
                 <th style={{ textAlign: "right", padding: "6px 16px", fontWeight: 600, color: "#6b7280" }}>Current Value</th>
                 <th style={{ textAlign: "right", padding: "6px 16px", fontWeight: 600, color: "#6b7280" }}>Gain / Loss</th>
+                {hasSellComm && <th style={{ textAlign: "right", padding: "6px 16px", fontWeight: 600, color: "#dc2626" }}>Net if sold</th>}
                 <th style={{ textAlign: "right", padding: "6px 16px", fontWeight: 600, color: "#6b7280" }}>Growth %</th>
               </tr>
             </thead>
@@ -143,6 +152,8 @@ function CategoryBlock({ title, accentColor, items, showLabel }: {
               {items.map(item => {
                 const g = item.currentValue !== null ? item.currentValue - item.invested : null;
                 const gPct = g !== null && item.invested > 0 ? (g / item.invested) * 100 : null;
+                const net = g !== null && item.sellCommission !== undefined ? g - item.sellCommission : null;
+                const netPct = net !== null && item.invested > 0 ? (net / item.invested) * 100 : null;
                 return (
                   <tr key={item.id} style={{ borderTop: "1px solid #f3f4f6" }}>
                     <td style={{ padding: "8px 16px" }}>
@@ -161,6 +172,15 @@ function CategoryBlock({ title, accentColor, items, showLabel }: {
                         <span style={{ color: g >= 0 ? "#059669" : "#dc2626", fontWeight: 700 }}>{g >= 0 ? "+" : ""}{fmt(g)}</span>
                       ) : "—"}
                     </td>
+                    {hasSellComm && (
+                      <td style={{ padding: "8px 16px", textAlign: "right" }}>
+                        {net !== null && netPct !== null ? (
+                          <span style={{ color: net >= 0 ? "#059669" : "#dc2626", fontWeight: 700 }}>
+                            {net >= 0 ? "+" : ""}{fmt(net)} ({netPct >= 0 ? "+" : ""}{netPct.toFixed(2)}%)
+                          </span>
+                        ) : "—"}
+                      </td>
+                    )}
                     <td style={{ padding: "8px 16px", textAlign: "right" }}>
                       {gPct !== null ? (
                         <span style={{ color: gPct >= 0 ? "#059669" : "#dc2626", fontWeight: 700 }}>{gPct >= 0 ? "+" : ""}{gPct.toFixed(2)}%</span>
@@ -185,6 +205,7 @@ interface Stock {
   color: string;
   createdAt: string;
   investedCapital: number;
+  sellCommission: number;
   active: boolean;
 }
 
@@ -262,7 +283,7 @@ function SummaryContent({
         const totalShares = txs.reduce((s, t) => s + t.quantity, 0);
         const latest = (priceSnapByInv[inv.id] ?? []).sort((a, b) => b.year - a.year || b.month - a.month)[0];
         const currentValue = latest ? latest.pricePerShare * totalShares : null;
-        return { id: inv.id, name: inv.name, color: inv.color, label: inv.type?.name, invested: totalCost, currentValue };
+        return { id: inv.id, name: inv.name, color: inv.color, label: inv.type?.name, invested: totalCost, currentValue, sellCommission: inv.sellCommission };
       });
   }, [dbStocks, txByInv, priceSnapByInv]);
 

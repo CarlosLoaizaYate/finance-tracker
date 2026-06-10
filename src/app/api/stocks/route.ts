@@ -25,7 +25,25 @@ export async function POST(req: NextRequest) {
       typeId: body.typeId,
       color: body.color,
       investedCapital: body.investedCapital ?? 0,
+      sellCommission: body.sellCommission ?? 14875,
       userId: user.id,
+    },
+    include: { type: true },
+  });
+  return NextResponse.json(stock);
+}
+
+export async function PUT(req: NextRequest) {
+  const user = await getAuthUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const body = await req.json();
+  if (!body.id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
+
+  const stock = await prisma.stock.update({
+    where: { id: body.id },
+    data: {
+      ...(body.sellCommission !== undefined && { sellCommission: body.sellCommission }),
     },
     include: { type: true },
   });

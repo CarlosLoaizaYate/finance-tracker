@@ -76,6 +76,7 @@ model Stock {
   color           String
   createdAt       DateTime             @default(now())
   investedCapital Int
+  sellCommission  Int                  @default(14875)
   active          Boolean              @default(true)
   userId          String
   user            User                 @relation(fields: [userId], references: [id])

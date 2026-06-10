@@ -116,6 +116,7 @@ export interface Stock {
   color: string;
   createdAt: string;
   investedCapital: number;
+  sellCommission: number;
   active: boolean;
 }
 
@@ -245,6 +246,15 @@ export function useRemoveStock() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => del(`/api/stocks?id=${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["stocks"] }),
+  });
+}
+
+export function useUpdateStock() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { id: string; sellCommission?: number }) =>
+      put("/api/stocks", data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["stocks"] }),
   });
 }

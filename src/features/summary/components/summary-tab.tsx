@@ -302,6 +302,12 @@ function InvestmentsSummarySection() {
     return total;
   }, [depositGroups]);
 
+  const stocksSellCommission = useMemo(() =>
+    dbStocks
+      .filter(inv => txByInv[inv.id]?.length)
+      .reduce((s, inv) => s + inv.sellCommission, 0),
+    [dbStocks, txByInv]);
+
   const totalInvested = stocksInvested + fundsInvested + cdtsInvested;
   const hasStocks = dbStocks.some(inv => txByInv[inv.id]?.length);
   const hasFunds = funds.length > 0;
@@ -309,8 +315,8 @@ function InvestmentsSummarySection() {
 
   if (!hasStocks && !hasFunds && !hasCdts) return null;
 
-  const rows: { label: string; color: string; invested: number; current: number | null }[] = [];
-  if (hasStocks) rows.push({ label: "Stocks", color: "#6366f1", invested: stocksInvested, current: stocksCurrentValue });
+  const rows: { label: string; color: string; invested: number; current: number | null; sellComm?: number }[] = [];
+  if (hasStocks) rows.push({ label: "Stocks", color: "#6366f1", invested: stocksInvested, current: stocksCurrentValue, sellComm: stocksSellCommission });
   if (hasFunds)  rows.push({ label: "Funds",  color: "#0891b2", invested: fundsInvested,  current: fundsCurrentValue });
   if (hasCdts)   rows.push({ label: "CDTs",   color: "#059669", invested: cdtsInvested,   current: cdtsCurrentValue });
 
@@ -347,6 +353,8 @@ function InvestmentsSummarySection() {
         {rows.map(row => {
           const gain = row.current !== null ? row.current - row.invested : null;
           const gainPct = gain !== null && row.invested > 0 ? (gain / row.invested) * 100 : null;
+          const net = gain !== null && row.sellComm !== undefined ? gain - row.sellComm : null;
+          const netPct = net !== null && row.invested > 0 ? (net / row.invested) * 100 : null;
           return (
             <div key={row.label} style={{
               flex: 1, minWidth: 160,
@@ -366,9 +374,18 @@ function InvestmentsSummarySection() {
                 </strong>
               </div>
               {gain !== null && gainPct !== null && (
-                <div style={{ fontSize: 11, marginTop: 4 }}>
+                <div style={{ fontSize: 11, marginTop: 4, color: "#6b7280" }}>
+                  Gain:{" "}
                   <strong style={{ color: gain >= 0 ? "#059669" : "#dc2626" }}>
                     {gain >= 0 ? "+" : ""}{fmt(gain)} ({gainPct >= 0 ? "+" : ""}{gainPct.toFixed(2)}%)
+                  </strong>
+                </div>
+              )}
+              {net !== null && netPct !== null && (
+                <div style={{ fontSize: 11, marginTop: 2, color: "#6b7280" }}>
+                  Net if sold:{" "}
+                  <strong style={{ color: net >= 0 ? "#059669" : "#dc2626" }}>
+                    {net >= 0 ? "+" : ""}{fmt(net)} ({netPct >= 0 ? "+" : ""}{netPct.toFixed(2)}%)
                   </strong>
                 </div>
               )}
