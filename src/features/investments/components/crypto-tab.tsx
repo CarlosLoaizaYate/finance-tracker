@@ -147,13 +147,17 @@ export function computeSummary(usdwPurchases: UsdwPurchase[], btcPurchases: BtcP
 
   const usdCopRateNow = latestSnapshot?.usdCopRate ?? avgHeldRate;
   const usdGrowthPct = avgHeldRate > 0 ? ((usdCopRateNow / avgHeldRate) - 1) * 100 : 0;
+  // Peso value gained/lost purely from the exchange rate moving, on the dollars you actually paid
+  // for (excludes interest units — those are counted separately in usdwGainCop below).
+  const usdwFxEffectCop = usdwHeldDerived * (usdCopRateNow - avgHeldRate);
   const usdValueCop = usdwHeld * usdCopRateNow;
 
   // Gain in USD: dollars earned as interest (1 USDW ≈ 1 USD by design) — excludes any peso effect.
   const usdwGainUsd = usdwHeld - usdwHeldDerived;
   // Gain in COP: your *real* peso profit — current value at the latest registered rate minus what
-  // you actually paid in pesos for the units you hold. This also captures the peso's own
-  // appreciation/depreciation against the dollar, which is why it isn't just usdwGainUsd × rate.
+  // you actually paid in pesos for the units you hold. This is usdwFxEffectCop (currency movement
+  // on your principal) + the interest units valued at today's rate — which is why it isn't just
+  // usdwGainUsd × rate.
   const usdwGainCop = usdValueCop - usdwCostBasisCop;
 
   const btcPriceUsdNow = latestSnapshot?.btcPriceUsd
@@ -177,6 +181,7 @@ export function computeSummary(usdwPurchases: UsdwPurchase[], btcPurchases: BtcP
     avgHeldRate,
     usdCopRateNow,
     usdGrowthPct,
+    usdwFxEffectCop,
     usdValueCop,
     btcHeld: totalBtcBought,
     btcCostUsdw: totalUsdwSpentOnBtc,
@@ -314,9 +319,11 @@ export default function CryptoTab() {
 
           <SectionLabel>Performance</SectionLabel>
           <StatRow
-            label="Growth since purchase"
-            value={summary.avgHeldRate > 0 ? `${summary.usdGrowthPct >= 0 ? "+" : ""}${summary.usdGrowthPct.toFixed(2)}%` : "—"}
-            valueColor={summary.usdGrowthPct >= 0 ? "#059669" : "#dc2626"}
+            label="Currency effect (COP)"
+            value={summary.avgHeldRate > 0
+              ? <>{summary.usdwFxEffectCop >= 0 ? "+" : ""}<Money amount={summary.usdwFxEffectCop} /> ({summary.usdGrowthPct >= 0 ? "+" : ""}{summary.usdGrowthPct.toFixed(2)}%)</>
+              : "—"}
+            valueColor={summary.usdwFxEffectCop >= 0 ? "#059669" : "#dc2626"}
           />
           <StatRow
             label="Gain / Loss (USD)"
