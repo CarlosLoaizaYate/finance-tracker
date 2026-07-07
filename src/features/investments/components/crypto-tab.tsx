@@ -83,18 +83,59 @@ export function compareSnapshots(a: CryptoSnapshot, b: CryptoSnapshot): number {
   return a.day - b.day;
 }
 
+// ── FIFO cost-basis tracking ─────────────────────────────────────────────
+
+interface UsdwLot { usdw: number; rateCop: number }
+
+/** Walks USDW purchases and BTC exchanges in chronological order, consuming USDW lots
+ * FIFO (oldest purchase first) whenever USDW is spent on BTC — the standard "which
+ * specific dollars are these" accounting method. Returns what's left (by original
+ * purchase rate) and the FIFO-attributed peso cost of everything spent on BTC. */
+function fifoUsdwLots(usdwPurchases: UsdwPurchase[], btcPurchases: BtcPurchase[]) {
+  type Event =
+    | { type: "usdw"; date: number; usdwAmount: number; copAmount: number }
+    | { type: "btc"; date: number; usdwAmount: number };
+
+  const events: Event[] = [
+    ...usdwPurchases.map(p => ({ type: "usdw" as const, date: new Date(p.date).getTime(), usdwAmount: p.usdwAmount, copAmount: p.copAmount })),
+    ...btcPurchases.map(p => ({ type: "btc" as const, date: new Date(p.date).getTime(), usdwAmount: p.usdwAmount })),
+  ].sort((a, b) => a.date - b.date);
+
+  const lots: UsdwLot[] = [];
+  let btcCostBasisCop = 0;
+
+  for (const ev of events) {
+    if (ev.type === "usdw") {
+      if (ev.usdwAmount > 0) lots.push({ usdw: ev.usdwAmount, rateCop: ev.copAmount / ev.usdwAmount });
+    } else {
+      let remaining = ev.usdwAmount;
+      while (remaining > 1e-9 && lots.length > 0) {
+        const lot = lots[0];
+        const consumed = Math.min(lot.usdw, remaining);
+        btcCostBasisCop += consumed * lot.rateCop;
+        lot.usdw -= consumed;
+        remaining -= consumed;
+        if (lot.usdw <= 1e-9) lots.shift();
+      }
+    }
+  }
+
+  const usdwHeldDerived = lots.reduce((s, l) => s + l.usdw, 0);
+  const usdwCostBasisCop = lots.reduce((s, l) => s + l.usdw * l.rateCop, 0);
+  return { usdwHeldDerived, usdwCostBasisCop, btcCostBasisCop };
+}
+
 // ── Summary calculations ────────────────────────────────────────────────
 
 export function computeSummary(usdwPurchases: UsdwPurchase[], btcPurchases: BtcPurchase[], snapshots: CryptoSnapshot[]) {
-  const totalUsdwBought = usdwPurchases.reduce((s, p) => s + p.usdwAmount, 0);
-  const totalCopSpentOnUsdw = usdwPurchases.reduce((s, p) => s + p.copAmount, 0);
   const totalUsdwSpentOnBtc = btcPurchases.reduce((s, p) => s + p.usdwAmount, 0);
   const totalBtcBought = btcPurchases.reduce((s, p) => s + p.btcAmount, 0);
 
-  // USDW units actually bought and not yet converted to BTC (the "cost basis" units — what you paid for).
-  const usdwHeldDerived = totalUsdwBought - totalUsdwSpentOnBtc;
-  // Weighted-average COP/USD rate actually paid (includes commission, since copAmount is total paid)
-  const weightedUsdRate = totalUsdwBought > 0 ? totalCopSpentOnUsdw / totalUsdwBought : 0;
+  // FIFO: the USDW units you still hold are specifically the *last* dollars you bought that
+  // haven't been spent yet — not a blend of every purchase you've ever made.
+  const { usdwHeldDerived, usdwCostBasisCop, btcCostBasisCop } = fifoUsdwLots(usdwPurchases, btcPurchases);
+  // Average rate of the USDW you currently hold (FIFO cost ÷ units held).
+  const avgHeldRate = usdwHeldDerived > 0 ? usdwCostBasisCop / usdwHeldDerived : 0;
 
   const sortedSnaps = [...snapshots].sort(compareSnapshots);
   const latestSnapshot = sortedSnaps.at(-1) ?? null;
@@ -104,8 +145,8 @@ export function computeSummary(usdwPurchases: UsdwPurchase[], btcPurchases: BtcP
   const usdwHeld = latestSnapshot?.usdwBalance ?? usdwHeldDerived;
   const hasUsdwBalanceOverride = latestSnapshot?.usdwBalance != null;
 
-  const usdCopRateNow = latestSnapshot?.usdCopRate ?? weightedUsdRate;
-  const usdGrowthPct = weightedUsdRate > 0 ? ((usdCopRateNow / weightedUsdRate) - 1) * 100 : 0;
+  const usdCopRateNow = latestSnapshot?.usdCopRate ?? avgHeldRate;
+  const usdGrowthPct = avgHeldRate > 0 ? ((usdCopRateNow / avgHeldRate) - 1) * 100 : 0;
   const usdValueCop = usdwHeld * usdCopRateNow;
 
   // Gain in USD: dollars earned as interest (1 USDW ≈ 1 USD by design) — excludes any peso effect.
@@ -113,7 +154,6 @@ export function computeSummary(usdwPurchases: UsdwPurchase[], btcPurchases: BtcP
   // Gain in COP: your *real* peso profit — current value at the latest registered rate minus what
   // you actually paid in pesos for the units you hold. This also captures the peso's own
   // appreciation/depreciation against the dollar, which is why it isn't just usdwGainUsd × rate.
-  const usdwCostBasisCop = usdwHeldDerived * weightedUsdRate;
   const usdwGainCop = usdValueCop - usdwCostBasisCop;
 
   const btcPriceUsdNow = latestSnapshot?.btcPriceUsd
@@ -123,9 +163,8 @@ export function computeSummary(usdwPurchases: UsdwPurchase[], btcPurchases: BtcP
   const btcValueCop = btcValueUsd * usdCopRateNow;
   // Gain in USD: BTC price appreciation at the latest registered price, vs. the USDW you spent.
   const btcGainUsd = btcValueUsd - totalUsdwSpentOnBtc;
-  // Gain in COP: real peso profit — current value at the latest rate minus the peso cost of the
-  // USDW you spent (at the rate you originally paid for it).
-  const btcCostBasisCop = totalUsdwSpentOnBtc * weightedUsdRate;
+  // Gain in COP: real peso profit — current value at the latest rate minus the FIFO peso cost of
+  // the specific USDW lots that were spent on this BTC.
   const btcGainCop = btcValueCop - btcCostBasisCop;
 
   return {
@@ -135,7 +174,7 @@ export function computeSummary(usdwPurchases: UsdwPurchase[], btcPurchases: BtcP
     usdwCostBasisCop,
     usdwGainUsd,
     usdwGainCop,
-    weightedUsdRate,
+    avgHeldRate,
     usdCopRateNow,
     usdGrowthPct,
     usdValueCop,
@@ -170,11 +209,9 @@ export function computeCryptoValueAtMonth(
   });
 
   const invested = relevantUsdw.reduce((s, p) => s + p.copAmount, 0);
-  const totalUsdwBought = relevantUsdw.reduce((s, p) => s + p.usdwAmount, 0);
-  const totalUsdwSpentOnBtc = relevantBtc.reduce((s, p) => s + p.usdwAmount, 0);
-  const usdwHeldDerived = totalUsdwBought - totalUsdwSpentOnBtc;
   const btcHeld = relevantBtc.reduce((s, p) => s + p.btcAmount, 0);
-  const rate = totalUsdwBought > 0 ? invested / totalUsdwBought : 0;
+  const { usdwHeldDerived, usdwCostBasisCop, btcCostBasisCop } = fifoUsdwLots(relevantUsdw, relevantBtc);
+  const avgHeldRate = usdwHeldDerived > 0 ? usdwCostBasisCop / usdwHeldDerived : 0;
 
   const relevantSnaps = snapshots
     .filter(s => s.year * 12 + (s.month - 1) <= monthAbs)
@@ -182,8 +219,8 @@ export function computeCryptoValueAtMonth(
   const latest = relevantSnaps.at(-1) ?? null;
   const usdwHeld = latest?.usdwBalance ?? usdwHeldDerived;
 
-  const usdwValue = latest ? usdwHeld * latest.usdCopRate : usdwHeld * rate;
-  const btcValue = latest ? btcHeld * latest.btcPriceUsd * latest.usdCopRate : totalUsdwSpentOnBtc * rate;
+  const usdwValue = latest ? usdwHeld * latest.usdCopRate : usdwHeld * avgHeldRate;
+  const btcValue = latest ? btcHeld * latest.btcPriceUsd * latest.usdCopRate : btcCostBasisCop;
   return { invested, value: usdwValue + btcValue, usdwValue, btcValue };
 }
 
@@ -273,12 +310,12 @@ export default function CryptoTab() {
           <StatRow label="Held" value={<Money amount={summary.usdwHeld} currency="USDW" />} />
           <StatRow label="Invested" value={<Money amount={summary.usdwCostBasisCop} />} />
           <StatRow label="Value in COP" value={<Money amount={summary.usdValueCop} />} valueColor="#059669" />
-          <StatRow label="Avg. buy rate (per USD)" value={summary.weightedUsdRate > 0 ? <Money amount={summary.weightedUsdRate} /> : "—"} />
+          <StatRow label="Avg. buy rate (per USD)" value={summary.avgHeldRate > 0 ? <Money amount={summary.avgHeldRate} /> : "—"} />
 
           <SectionLabel>Performance</SectionLabel>
           <StatRow
             label="Growth since purchase"
-            value={summary.weightedUsdRate > 0 ? `${summary.usdGrowthPct >= 0 ? "+" : ""}${summary.usdGrowthPct.toFixed(2)}%` : "—"}
+            value={summary.avgHeldRate > 0 ? `${summary.usdGrowthPct >= 0 ? "+" : ""}${summary.usdGrowthPct.toFixed(2)}%` : "—"}
             valueColor={summary.usdGrowthPct >= 0 ? "#059669" : "#dc2626"}
           />
           <StatRow

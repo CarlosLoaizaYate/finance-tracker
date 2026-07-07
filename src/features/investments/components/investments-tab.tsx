@@ -316,8 +316,7 @@ function SummaryContent({
   const cryptoItems = useMemo((): CategoryItem[] => {
     if (usdwPurchases.length === 0 && btcPurchases.length === 0) return [];
 
-    // Cost basis split: both portions were bought at the same weighted-average COP/USD rate.
-    const rate = cryptoSummary.weightedUsdRate;
+    // Cost basis (FIFO): each portion's actual peso cost, from computeSummary.
     const usdwCurrent = cryptoSummary.usdValueCop;
     const btcCurrent = cryptoSummary.btcValueCop;
     const totalCurrent = usdwCurrent + btcCurrent;
@@ -328,14 +327,14 @@ function SummaryContent({
     if (usdwPurchases.length > 0) {
       items.push({
         id: "crypto-usdw", name: "USDW", color: "#f59e0b",
-        invested: cryptoSummary.usdwHeld * rate, currentValue: usdwCurrent,
+        invested: cryptoSummary.usdwCostBasisCop, currentValue: usdwCurrent,
         sellCommission: usdwSellComm,
       });
     }
     if (btcPurchases.length > 0) {
       items.push({
         id: "crypto-btc", name: "BTC", color: "#f7931a",
-        invested: cryptoSummary.btcCostUsdw * rate, currentValue: btcCurrent,
+        invested: cryptoSummary.btcCostBasisCop, currentValue: btcCurrent,
         sellCommission: totalSellComm - usdwSellComm,
       });
     }
