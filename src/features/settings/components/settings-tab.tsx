@@ -19,7 +19,6 @@ import {
   useRemoveExpenseItem,
   useUpdateExpenseItem,
   useAddBudgetHistory,
-  useSeedData,
   effectiveIncomeAmount,
   effectiveBudget,
   type IncomeSource,
@@ -824,62 +823,12 @@ function InvestmentTypesSection() {
   );
 }
 
-// ── Reset / Seed section ─────────────────────────────────────────────
-
-function ResetCategoriesSection() {
-  const seedMut = useSeedData();
-  const [confirm, setConfirm] = useState(false);
-
-  const handleReset = () => {
-    seedMut.mutate(undefined, { onSuccess: () => setConfirm(false) });
-  };
-
-  return (
-    <SectionCard title="Base Data">
-      <p style={{ fontSize: 13, color: "#6b7280", margin: "0 0 12px" }}>
-        Loads standard categories and subcategories. <strong style={{ color: "#ef4444" }}>Deletes all existing expenses, budgets and items</strong> — investments are not affected.
-      </p>
-      {!confirm ? (
-        <button
-          onClick={() => setConfirm(true)}
-          style={{ padding: "8px 18px", borderRadius: 8, border: "none", cursor: "pointer",
-            background: "#ef4444", color: "#fff", fontWeight: 700, fontSize: 13 }}>
-          Load base categories
-        </button>
-      ) : (
-        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-          <span style={{ fontSize: 13, color: "#374151" }}>Are you sure? All recorded expenses will be deleted.</span>
-          <button
-            onClick={handleReset}
-            disabled={seedMut.isPending}
-            style={{ padding: "7px 16px", borderRadius: 8, border: "none", cursor: "pointer",
-              background: "#ef4444", color: "#fff", fontWeight: 700, fontSize: 13 }}>
-            {seedMut.isPending ? "Loading..." : "Yes, continue"}
-          </button>
-          <button
-            onClick={() => setConfirm(false)}
-            style={{ padding: "7px 14px", borderRadius: 8, border: "1px solid #d1d5db",
-              background: "none", color: "#6b7280", cursor: "pointer", fontSize: 13 }}>
-            Cancel
-          </button>
-        </div>
-      )}
-      {seedMut.isSuccess && (
-        <p style={{ fontSize: 13, color: "#10b981", marginTop: 10, fontWeight: 600 }}>
-          Categories loaded successfully!
-        </p>
-      )}
-    </SectionCard>
-  );
-}
-
 // ── Root ─────────────────────────────────────────────────────────────
 
 export default function SettingsTab() {
   return (
     <div>
       <h2 style={{ fontSize: 20, fontWeight: 700, color: "#111827", marginBottom: 16 }}>Settings</h2>
-      <ResetCategoriesSection />
       <CategoriesSection />
       <IncomeSources />
       <ImportantExpensesSection />
