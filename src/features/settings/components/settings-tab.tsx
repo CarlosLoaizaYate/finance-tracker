@@ -27,6 +27,7 @@ import {
   type Category,
 } from "@/hooks/use-finance-data";
 import { fmt } from "@/lib/formatters";
+import Money from "@/components/ui/money";
 
 const now = new Date();
 const CUR_MONTH = now.getMonth(); // 0-based (0=Jan, 11=Dec)
@@ -232,7 +233,7 @@ function IncomeSourceRow({ source }: { source: IncomeSource }) {
     <li style={{ padding: "10px 12px", background: "#f9fafb", borderRadius: 10, marginBottom: 8 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <span style={{ flex: 1, fontSize: 14, fontWeight: 600, color: "#111827" }}>{source.name}</span>
-        <span style={{ fontSize: 14, fontWeight: 700, color: "#10b981" }}>{fmt(current)}</span>
+        <span style={{ fontSize: 14, fontWeight: 700, color: "#10b981" }}>{<Money amount={current} />}</span>
         <button onClick={() => { setEditing(!editing); setShowHistory(false); }}
           style={{ fontSize: 12, padding: "3px 10px", borderRadius: 6, border: "1px solid #6366f1",
             background: "none", color: "#6366f1", cursor: "pointer", fontWeight: 600 }}>
@@ -280,7 +281,7 @@ function IncomeSourceRow({ source }: { source: IncomeSource }) {
           {[...source.history].reverse().map((h) => (
             <div key={h.id} style={{ display: "flex", gap: 8, fontSize: 12, color: "#374151", marginBottom: 2 }}>
               <span style={{ color: "#9ca3af" }}>From {MONTHS[h.effectiveMonth]} {h.effectiveYear}:</span>
-              <span style={{ fontWeight: 600 }}>{fmt(h.amount)}</span>
+              <span style={{ fontWeight: 600 }}>{<Money amount={h.amount} />}</span>
             </div>
           ))}
         </div>
@@ -312,7 +313,7 @@ function IncomeSources() {
     <SectionCard title="Income">
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
         <span style={{ fontSize: 13, color: "#6b7280" }}>
-          Current total: <strong style={{ color: "#10b981" }}>{fmt(totalCurrent)}</strong>
+          Current total: <strong style={{ color: "#10b981" }}>{<Money amount={totalCurrent} />}</strong>
         </span>
         <button onClick={() => setShowForm(!showForm)}
           style={{ padding: "6px 14px", borderRadius: 8, border: "none", cursor: "pointer",
@@ -409,7 +410,7 @@ function BudgetItemRow({ item, categories }: { item: ExpenseItem; categories: Ca
         </span>
         <span style={{ fontSize: 12, color: "#9ca3af" }}>{cat?.name}</span>
         <span style={{ fontSize: 13, fontWeight: 700, color: "#374151", minWidth: 80, textAlign: "right" }}>
-          {fmt(current)}
+          {<Money amount={current} />}
         </span>
         <button
           onClick={() => { setEditName(item.name); setEditCatId(item.categoryId); setMode(mode === "edit" ? "view" : "edit"); }}
@@ -575,7 +576,7 @@ function ExpenseCategoryGroup({ catId, catItems, categories }: { catId: string; 
           background: open ? "#f9fafb" : "#fff", border: "none", cursor: "pointer", textAlign: "left" }}>
         <span style={{ width: 12, height: 12, borderRadius: 4, background: cat?.color ?? "#6b7280", flexShrink: 0 }} />
         <span style={{ flex: 1, fontSize: 14, fontWeight: 700, color: "#111827" }}>{cat?.name ?? catId}</span>
-        <span style={{ fontSize: 12, color: "#6b7280" }}>{fmt(total)}</span>
+        <span style={{ fontSize: 12, color: "#6b7280" }}>{<Money amount={total} />}</span>
         <span style={{ fontSize: 11, color: "#9ca3af", marginLeft: 8 }}>
           {catItems.length} ítem{catItems.length !== 1 ? "s" : ""}
         </span>

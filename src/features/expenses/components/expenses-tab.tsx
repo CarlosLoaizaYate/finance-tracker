@@ -15,8 +15,8 @@ import {
 } from "@/hooks/use-finance-data";
 import { useDashboardStore } from "@/stores/dashboard-store";
 import { MONTHS } from "@/lib/constants";
-import { fmt } from "@/lib/formatters";
 import EditableCell from "@/components/ui/editable-cell";
+import Money from "@/components/ui/money";
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -216,7 +216,7 @@ function RemindersSection({
                 </div>
                 {!isPaying && (
                   <span style={{ fontSize: 13, fontWeight: 700, color: "#a855f7" }}>
-                    {fmt(budgetAmt)}
+                    {<Money amount={budgetAmt} />}
                   </span>
                 )}
               </div>
@@ -369,7 +369,7 @@ function ActiveMonthTable({
                     />
                   </td>
                   <td style={{ padding: "6px 10px", textAlign: "right", color: "#d1d5db", fontSize: 12 }}>
-                    {budget > 0 ? fmt(budget) : "—"}
+                    {budget > 0 ? <Money amount={budget} /> : "—"}
                   </td>
                   <td style={{ padding: "4px 6px", textAlign: "right" }}>
                     <EditableCell
@@ -397,7 +397,7 @@ function ActiveMonthTable({
                   Total {MONTHS[month]}
                 </td>
                 <td style={{ padding: "7px 10px", textAlign: "right", fontWeight: 800, fontSize: 14, color: "#111827" }}>
-                  {fmt(monthTotal)}
+                  {<Money amount={monthTotal} />}
                 </td>
                 <td />
               </tr>
@@ -617,11 +617,11 @@ function MonthlyHistorySection({
                   <td style={{ padding: "7px 14px", fontWeight: 600, color: "#374151", whiteSpace: "nowrap" }}>
                     {MONTHS[month]} {year}
                   </td>
-                  <td style={{ padding: "7px 10px", textAlign: "right", fontWeight: 700, color: "#111827" }}>{fmt(total)}</td>
+                  <td style={{ padding: "7px 10px", textAlign: "right", fontWeight: 700, color: "#111827" }}>{<Money amount={total} />}</td>
                   <td style={{ padding: "7px 10px", textAlign: "right", color: "#9ca3af" }}>{count}</td>
                   {cats.map((c) => (
                     <td key={c.id} style={{ padding: "7px 10px", textAlign: "right", color: "#6b7280" }}>
-                      {byCat[c.id] ? fmt(byCat[c.id]) : "—"}
+                      {byCat[c.id] ? <Money amount={byCat[c.id]} /> : "—"}
                     </td>
                   ))}
                 </tr>
@@ -719,11 +719,11 @@ function YearlyHistorySection({
               {yearSummaries.filter((s) => s.count > 0).map(({ year, total, byCat, count }) => (
                 <tr key={year} style={{ borderTop: "1px solid #f3f4f6" }}>
                   <td style={{ padding: "7px 14px", fontWeight: 700, color: "#374151" }}>{year}</td>
-                  <td style={{ padding: "7px 10px", textAlign: "right", fontWeight: 700, color: "#111827" }}>{fmt(total)}</td>
+                  <td style={{ padding: "7px 10px", textAlign: "right", fontWeight: 700, color: "#111827" }}>{<Money amount={total} />}</td>
                   <td style={{ padding: "7px 10px", textAlign: "right", color: "#9ca3af" }}>{count}</td>
                   {cats.map((c) => (
                     <td key={c.id} style={{ padding: "7px 10px", textAlign: "right", color: "#6b7280" }}>
-                      {byCat[c.id] ? fmt(byCat[c.id]) : "—"}
+                      {byCat[c.id] ? <Money amount={byCat[c.id]} /> : "—"}
                     </td>
                   ))}
                 </tr>

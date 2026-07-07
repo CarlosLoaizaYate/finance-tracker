@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "User" ADD COLUMN "cryptoCommissionRate" DOUBLE PRECISION NOT NULL DEFAULT 0.001;

@@ -68,7 +68,7 @@ export default function EditableCell({ value, onChange, edited }: EditableCellPr
         borderColor: edited ? "#a5b4fc" : "#e5e7eb",
       }}
     >
-      {value > 0 ? fmt(value) : "—"}
+      {value > 0 ? `${fmt(value)} COP` : "—"}
     </span>
   );
 }

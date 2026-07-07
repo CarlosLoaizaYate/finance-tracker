@@ -8,7 +8,7 @@ export async function GET() {
 
   const groups = await prisma.fixedDepositGroup.findMany({
     where: { userId: user.id },
-    include: { cycles: { orderBy: { startDate: "asc" }, include: { snapshots: { orderBy: [{ year: "asc" }, { month: "asc" }] } } } },
+    include: { cycles: { orderBy: { startDate: "asc" }, include: { snapshots: { orderBy: [{ year: "asc" }, { month: "asc" }, { day: "asc" }] } } } },
     orderBy: { createdAt: "asc" },
   });
   return NextResponse.json(groups);

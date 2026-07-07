@@ -11,6 +11,8 @@ model User {
   email               String               @unique
   name                String?
   createdAt           DateTime             @default(now())
+  cryptoSellCommission Int                 @default(0)
+  cryptoCommissionRate Float               @default(0.001)
   categories          Category[]
   expenseItems        ExpenseItem[]
   expenseRecords      ExpenseRecord[]
@@ -26,6 +28,9 @@ model User {
   fixedDepositGroups     FixedDepositGroup[]
   fixedDeposits          FixedDeposit[]
   fixedDepositSnapshots  FixedDepositSnapshot[]
+  usdwPurchases          UsdwPurchase[]
+  btcPurchases           BtcPurchase[]
+  cryptoSnapshots        CryptoSnapshot[]
 }
 
 model Category {
@@ -223,6 +228,7 @@ model FixedDeposit {
 model FixedDepositSnapshot {
   id        String       @id @default(uuid())
   depositId String
+  day       Int          @default(1)
   month     Int
   year      Int
   gain      Int
@@ -231,5 +237,46 @@ model FixedDepositSnapshot {
   deposit   FixedDeposit @relation(fields: [depositId], references: [id], onDelete: Cascade)
   user      User         @relation(fields: [userId], references: [id])
 
-  @@unique([depositId, month, year])
+  @@unique([depositId, day, month, year])
+}
+
+// ── Crypto: COP -> USDW -> BTC ──────────────────────────────────────────
+
+model UsdwPurchase {
+  id            String   @id @default(uuid())
+  date          DateTime
+  copAmount     Float    // total COP paid for this purchase (includes commission)
+  commissionCop Int      @default(0)
+  usdwAmount    Float    // USDW actually received
+  notes         String   @default("")
+  createdAt     DateTime @default(now())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model BtcPurchase {
+  id             String   @id @default(uuid())
+  date           DateTime
+  usdwAmount     Float    // USDW handed over for this exchange (includes commission)
+  commissionUsdw Float    @default(0)
+  btcPriceUsdw   Float    // price of 1 BTC in USDW at the time of this exchange
+  btcAmount      Float    // BTC actually received
+  notes          String   @default("")
+  createdAt      DateTime @default(now())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model CryptoSnapshot {
+  id          String   @id @default(uuid())
+  day         Int      @default(1)
+  month       Int
+  year        Int
+  usdCopRate  Float    // COP per 1 USD
+  btcPriceUsd Float    // USD per 1 BTC
+  createdAt   DateTime @default(now())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, day, month, year])
 }

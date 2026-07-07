@@ -17,7 +17,7 @@ import {
     type StockTransaction,
     type StockPriceSnapshot,
 } from "@/hooks/use-finance-data";
-import { fmt } from "@/lib/formatters";
+import Money from "@/components/ui/money";
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const COLORS = ["#7c3aed", "#2563eb", "#059669", "#dc2626", "#d97706", "#0891b2", "#db2777", "#be185d", "#065f46", "#92400e"];
@@ -41,7 +41,7 @@ function GainBadge({ gain, pct }: { gain: number; pct: number }) {
     const positive = gain >= 0;
     return (
         <span style={{ color: positive ? "#059669" : "#dc2626", fontWeight: 700, fontSize: 12 }}>
-            {positive ? "+" : ""}{fmt(gain)} ({positive ? "+" : ""}{pct.toFixed(2)}%)
+            {positive ? "+" : ""}{<Money amount={gain} />} ({positive ? "+" : ""}{pct.toFixed(2)}%)
         </span>
     );
 }
@@ -165,7 +165,7 @@ function NewStockForm({ onClose }: { onClose: () => void }) {
             </div>
             {previewCost > 0 && (
                 <div style={{ marginTop: 8, fontSize: 12, color: "#6b7280" }}>
-                    Total cost: <strong style={{ color: "#1f2937" }}>{fmt(previewCost)}</strong>
+                    Total cost: <strong style={{ color: "#1f2937" }}>{<Money amount={previewCost} />}</strong>
                 </div>
             )}
             <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
@@ -259,7 +259,7 @@ function AddPurchaseForm({ investmentId, onClose }: { investmentId: string; onCl
             </div>
             {previewCost > 0 && (
                 <div style={{ marginTop: 6, fontSize: 11, color: "#6b7280" }}>
-                    Cost basis: <strong style={{ color: "#1f2937" }}>{fmt(previewCost)}</strong>
+                    Cost basis: <strong style={{ color: "#1f2937" }}>{<Money amount={previewCost} />}</strong>
                 </div>
             )}
         </div>
@@ -324,8 +324,8 @@ function AddPricePerShareForm({ investmentId, totalShares, totalCost }: { invest
             </div>
             {currentValue != null && gain != null && gainPct != null && (
                 <div style={{ marginTop: 8, fontSize: 12, display: "flex", gap: 16, flexWrap: "wrap" }}>
-                    <span style={{ color: "#6b7280" }}>Current value: <strong style={{ color: "#059669" }}>{fmt(currentValue)}</strong></span>
-                    <span style={{ color: "#6b7280" }}>Invested: <strong style={{ color: "#1f2937" }}>{fmt(totalCost)}</strong></span>
+                    <span style={{ color: "#6b7280" }}>Current value: <strong style={{ color: "#059669" }}>{<Money amount={currentValue} />}</strong></span>
+                    <span style={{ color: "#6b7280" }}>Invested: <strong style={{ color: "#1f2937" }}>{<Money amount={totalCost} />}</strong></span>
                     <span style={{ color: "#6b7280" }}>Gain / Loss: <GainBadge gain={gain} pct={gainPct} /></span>
                 </div>
             )}
@@ -406,9 +406,9 @@ function StockDetail({ investment, onBack }: { investment: Stock; onBack: () => 
                 {/* Row 1: shares info */}
                 {([
                     { label: "Total Shares", value: totalShares.toLocaleString(), color: "#3b82f6" },
-                    { label: "Avg Buy Price", value: totalShares > 0 ? fmt(avgCostPerShare) : "—", color: "#7c3aed" },
-                    { label: "Current Price/Share", value: latestPrice > 0 ? fmt(latestPrice) : "—", color: "#0891b2" },
-                    { label: "Current Value", value: latestValue > 0 ? fmt(latestValue) : "—", color: "#059669" },
+                    { label: "Avg Buy Price", value: totalShares > 0 ? <Money amount={avgCostPerShare} /> : "—", color: "#7c3aed" },
+                    { label: "Current Price/Share", value: latestPrice > 0 ? <Money amount={latestPrice} /> : "—", color: "#0891b2" },
+                    { label: "Current Value", value: latestValue > 0 ? <Money amount={latestValue} /> : "—", color: "#059669" },
                 ] as { label: string; value: React.ReactNode; color: string }[]).map(({ label, value, color }) => (
                     <div key={label} style={{ background: "#fff", borderRadius: 10, padding: 12, boxShadow: "0 1px 4px #0001" }}>
                         <div style={{ fontSize: 10, color: "#6b7280", fontWeight: 600, marginBottom: 4 }}>{label}</div>
@@ -419,8 +419,8 @@ function StockDetail({ investment, onBack }: { investment: Stock; onBack: () => 
                 {/* Shares Cost card */}
                 <div style={{ background: "#fff", borderRadius: 10, padding: 12, boxShadow: "0 1px 4px #0001", borderTop: "3px solid #f59e0b" }}>
                     <div style={{ fontSize: 10, color: "#6b7280", fontWeight: 600, marginBottom: 4 }}>SHARES COST <span style={{ color: "#9ca3af" }}>(sin comisión)</span></div>
-                    <div style={{ fontSize: 16, fontWeight: 700, color: "#f59e0b" }}>{fmt(totalSharesCost)}</div>
-                    <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 2 }}>Com. compra: {fmt(totalCommissions)}</div>
+                    <div style={{ fontSize: 16, fontWeight: 700, color: "#f59e0b" }}>{<Money amount={totalSharesCost} />}</div>
+                    <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 2 }}>Com. compra: {<Money amount={totalCommissions} />}</div>
                     {sharesGain != null && (
                         <div style={{ fontSize: 12, marginTop: 4 }}>
                             <GainBadge gain={sharesGain} pct={sharesGainPct} />
@@ -431,7 +431,7 @@ function StockDetail({ investment, onBack }: { investment: Stock; onBack: () => 
                 {/* Cost Basis card */}
                 <div style={{ background: "#fff", borderRadius: 10, padding: 12, boxShadow: "0 1px 4px #0001", borderTop: "3px solid #6366f1" }}>
                     <div style={{ fontSize: 10, color: "#6b7280", fontWeight: 600, marginBottom: 4 }}>COST BASIS <span style={{ color: "#9ca3af" }}>(con com. compra)</span></div>
-                    <div style={{ fontSize: 16, fontWeight: 700, color: "#6366f1" }}>{fmt(totalCost)}</div>
+                    <div style={{ fontSize: 16, fontWeight: 700, color: "#6366f1" }}>{<Money amount={totalCost} />}</div>
                     {totalGain != null && (
                         <div style={{ fontSize: 12, marginTop: 4 }}>
                             <GainBadge gain={totalGain} pct={totalGainPct} />
@@ -463,7 +463,7 @@ function StockDetail({ investment, onBack }: { investment: Stock; onBack: () => 
                                     style={{ cursor: "pointer", textDecoration: "underline dotted", color: "#9ca3af" }}
                                     title="Click to edit sell commission"
                                 >
-                                    com. venta: {fmt(sellComm)}
+                                    com. venta: {<Money amount={sellComm} />}
                                 </span>
                             )}
                         </span>
@@ -471,7 +471,7 @@ function StockDetail({ investment, onBack }: { investment: Stock; onBack: () => 
                     {netIfSold !== null && netIfSoldPct !== null ? (
                         <>
                             <div style={{ fontSize: 16, fontWeight: 700, color: netIfSold >= 0 ? "#059669" : "#dc2626" }}>
-                                {netIfSold >= 0 ? "+" : ""}{fmt(netIfSold)}
+                                {netIfSold >= 0 ? "+" : ""}{<Money amount={netIfSold} />}
                             </div>
                             <div style={{ fontSize: 11, marginTop: 2 }}>
                                 <GainBadge gain={netIfSold} pct={netIfSoldPct} />
@@ -522,7 +522,7 @@ function StockDetail({ investment, onBack }: { investment: Stock; onBack: () => 
                                     <th style={{ textAlign: "right", padding: "8px 10px", fontWeight: 600, color: "#6366f1" }}>G/L (con com.)</th>
                                     <th style={{ textAlign: "right", padding: "8px 10px", fontWeight: 600, color: "#059669", background: "#f0fdf4" }}>
                                         <div>Current Value</div>
-                                        {latestPrice > 0 && <div style={{ fontSize: 10, fontWeight: 400, color: "#6b7280" }}>@ {fmt(latestPrice)}/share</div>}
+                                        {latestPrice > 0 && <div style={{ fontSize: 10, fontWeight: 400, color: "#6b7280" }}>@ {<Money amount={latestPrice} />}/share</div>}
                                     </th>
                                     <th style={{ padding: "8px 10px" }}></th>
                                 </tr>
@@ -549,13 +549,13 @@ function StockDetail({ investment, onBack }: { investment: Stock; onBack: () => 
                                                 {tx.quantity.toLocaleString()}
                                             </td>
                                             <td style={{ padding: "8px 10px", textAlign: "right" }}>
-                                                {fmt(tx.priceUnit)}
+                                                {<Money amount={tx.priceUnit} />}
                                             </td>
                                             <td style={{ padding: "8px 10px", textAlign: "right", color: "#f59e0b" }}>
-                                                {fmt(tx.commission)}
+                                                {<Money amount={tx.commission} />}
                                             </td>
                                             <td style={{ padding: "8px 10px", textAlign: "right", fontWeight: 600, color: "#f59e0b" }}>
-                                                {fmt(sharesCost)}
+                                                {<Money amount={sharesCost} />}
                                             </td>
                                             <td style={{ padding: "8px 10px", textAlign: "right" }}>
                                                 {sharesGainRow != null && sharesGainPctRow != null
@@ -563,7 +563,7 @@ function StockDetail({ investment, onBack }: { investment: Stock; onBack: () => 
                                                     : <span style={{ color: "#9ca3af" }}>—</span>}
                                             </td>
                                             <td style={{ padding: "8px 10px", textAlign: "right", fontWeight: 600, color: "#6366f1" }}>
-                                                {fmt(costBasis)}
+                                                {<Money amount={costBasis} />}
                                             </td>
                                             <td style={{ padding: "8px 10px", textAlign: "right" }}>
                                                 {gainTotal != null && gainTotalPct != null
@@ -571,7 +571,7 @@ function StockDetail({ investment, onBack }: { investment: Stock; onBack: () => 
                                                     : <span style={{ color: "#9ca3af" }}>—</span>}
                                             </td>
                                             <td style={{ padding: "8px 10px", textAlign: "right", color: "#059669", fontWeight: 600, background: "#f0fdf4" }}>
-                                                {batchCurrentValue != null ? fmt(batchCurrentValue) : <span style={{ color: "#9ca3af" }}>—</span>}
+                                                {batchCurrentValue != null ? <Money amount={batchCurrentValue} /> : <span style={{ color: "#9ca3af" }}>—</span>}
                                             </td>
                                             <td style={{ padding: "8px 10px" }}>
                                                 <button onClick={() => handleDeleteTx(tx.id)} disabled={deleteTransaction.isPending}
@@ -619,13 +619,13 @@ function StockDetail({ investment, onBack }: { investment: Stock; onBack: () => 
                                             {MONTHS[snap.month - 1]} {snap.year}
                                         </td>
                                         <td style={{ padding: "8px 10px", textAlign: "right", color: "#0891b2", fontWeight: 600 }}>
-                                            {fmt(snap.pricePerShare)}
+                                            {<Money amount={snap.pricePerShare} />}
                                         </td>
                                         <td style={{ padding: "8px 10px", textAlign: "right", color: "#6b7280" }}>
-                                            {fmt(totalCost)}
+                                            {<Money amount={totalCost} />}
                                         </td>
                                         <td style={{ padding: "8px 10px", textAlign: "right", fontWeight: 700, color: "#059669" }}>
-                                            {fmt(snapCurrentValue)}
+                                            {<Money amount={snapCurrentValue} />}
                                         </td>
                                         <td style={{ padding: "8px 10px", textAlign: "right" }}>
                                             <GainBadge gain={snapGain} pct={snapGainPct} />
@@ -730,11 +730,11 @@ function StockList({
                                     </div>
                                     <div>
                                         <div style={{ fontSize: 10, color: "#9ca3af", fontWeight: 600 }}>TOTAL INVESTED</div>
-                                        <div style={{ fontSize: 14, fontWeight: 700, color: "#f59e0b" }}>{fmt(totalCost)}</div>
+                                        <div style={{ fontSize: 14, fontWeight: 700, color: "#f59e0b" }}>{<Money amount={totalCost} />}</div>
                                     </div>
                                     <div>
                                         <div style={{ fontSize: 10, color: "#9ca3af", fontWeight: 600 }}>CURRENT VALUE</div>
-                                        <div style={{ fontSize: 14, fontWeight: 700, color: "#059669" }}>{latestValue > 0 ? fmt(latestValue) : "—"}</div>
+                                        <div style={{ fontSize: 14, fontWeight: 700, color: "#059669" }}>{latestValue > 0 ? <Money amount={latestValue} /> : "—"}</div>
                                     </div>
                                     <div>
                                         <div style={{ fontSize: 10, color: "#9ca3af", fontWeight: 600 }}>GAIN / LOSS</div>
@@ -743,7 +743,7 @@ function StockList({
                                         </div>
                                     </div>
                                     <div style={{ gridColumn: "1 / -1", borderTop: "1px solid #f3f4f6", paddingTop: 8 }}>
-                                        <div style={{ fontSize: 10, color: "#dc2626", fontWeight: 600 }}>NET IF SOLD <span style={{ color: "#9ca3af", fontWeight: 400 }}>(-{fmt(inv.sellCommission)} com.)</span></div>
+                                        <div style={{ fontSize: 10, color: "#dc2626", fontWeight: 600 }}>NET IF SOLD <span style={{ color: "#9ca3af", fontWeight: 400 }}>(-{<Money amount={inv.sellCommission} />} com.)</span></div>
                                         <div style={{ fontSize: 13 }}>
                                             {netIfSold != null ? <GainBadge gain={netIfSold} pct={netIfSoldPct} /> : "—"}
                                         </div>

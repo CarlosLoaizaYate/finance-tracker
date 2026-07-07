@@ -11,7 +11,7 @@ import {
     type Fund,
     type FundSnapshot,
 } from "@/hooks/use-finance-data";
-import { fmt } from "@/lib/formatters";
+import Money from "@/components/ui/money";
 
 const MONTHS_EN = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const COLORS = ["#7c3aed", "#2563eb", "#059669", "#dc2626", "#d97706", "#0891b2", "#db2777", "#be185d", "#065f46", "#92400e"];
@@ -26,7 +26,7 @@ function GainBadge({ gain, pct }: { gain: number; pct: number }) {
     const pos = gain >= 0;
     return (
         <span style={{ color: pos ? "#059669" : "#dc2626", fontWeight: 700, fontSize: 12 }}>
-            {pos ? "+" : ""}{fmt(gain)} ({pos ? "+" : ""}{pct.toFixed(2)}%)
+            {pos ? "+" : ""}{<Money amount={gain} />} ({pos ? "+" : ""}{pct.toFixed(2)}%)
         </span>
     );
 }
@@ -222,7 +222,7 @@ function AddEntryForm({ fund }: { fund: Fund }) {
             </div>
             {enteredValue > 0 && gain != null && gainPct != null && (
                 <div style={{ marginTop: 8, fontSize: 12, display: "flex", gap: 16, flexWrap: "wrap" }}>
-                    <span style={{ color: "#6b7280" }}>Total invested: <strong style={{ color: "#1f2937" }}>{fmt(totalInvested)}</strong></span>
+                    <span style={{ color: "#6b7280" }}>Total invested: <strong style={{ color: "#1f2937" }}>{<Money amount={totalInvested} />}</strong></span>
                     <span style={{ color: "#6b7280" }}>Gain / Loss: <GainBadge gain={gain} pct={gainPct} /></span>
                 </div>
             )}
@@ -287,10 +287,10 @@ function FundDetail({ fund, onBack, onDelete }: { fund: Fund; onBack: () => void
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10, marginBottom: 20 }}>
                 {([
                     { label: "Start Date", value: new Date(fund.startDate).toLocaleDateString("es-CO", { day: "2-digit", month: "short", year: "numeric" }), color: "#6b7280" },
-                    { label: "Base Capital", value: fmt(fund.baseCapital), color: "#6b7280" },
-                    { label: "Total Contributions", value: fmt(totalContribs), color: "#f59e0b" },
-                    { label: "Total Invested", value: fmt(totalInvested), color: "#7c3aed" },
-                    { label: "Current Value", value: currentValue > 0 ? fmt(currentValue) : "—", color: "#059669" },
+                    { label: "Base Capital", value: <Money amount={fund.baseCapital} />, color: "#6b7280" },
+                    { label: "Total Contributions", value: <Money amount={totalContribs} />, color: "#f59e0b" },
+                    { label: "Total Invested", value: <Money amount={totalInvested} />, color: "#7c3aed" },
+                    { label: "Current Value", value: currentValue > 0 ? <Money amount={currentValue} /> : "—", color: "#059669" },
                     { label: "Gain / Loss", value: gain != null ? <GainBadge gain={gain} pct={gainPct} /> : "—", color: gain != null && gain >= 0 ? "#059669" : "#dc2626" },
                 ] as { label: string; value: React.ReactNode; color: string }[]).map(({ label, value, color }) => (
                     <div key={label} style={{ background: "#fff", borderRadius: 10, padding: 12, boxShadow: "0 1px 4px #0001" }}>
@@ -331,13 +331,13 @@ function FundDetail({ fund, onBack, onDelete }: { fund: Fund; onBack: () => void
                                                 {snap.day} {MONTHS_EN[snap.month - 1]} {snap.year}
                                             </td>
                                             <td style={{ padding: "8px 10px", textAlign: "right", color: snap.contribution > 0 ? "#f59e0b" : "#9ca3af" }}>
-                                                {snap.contribution > 0 ? `+${fmt(snap.contribution)}` : "—"}
+                                                {snap.contribution > 0 ? <>+<Money amount={snap.contribution} /></> : "—"}
                                             </td>
                                             <td style={{ padding: "8px 10px", textAlign: "right", fontWeight: 600, color: "#059669" }}>
-                                                {fmt(snap.currentValue)}
+                                                {<Money amount={snap.currentValue} />}
                                             </td>
                                             <td style={{ padding: "8px 10px", textAlign: "right", color: "#7c3aed" }}>
-                                                {fmt(invAtSnap)}
+                                                {<Money amount={invAtSnap} />}
                                             </td>
                                             <td style={{ padding: "8px 10px", textAlign: "right" }}>
                                                 <GainBadge gain={snapGain} pct={snapGainPct} />
@@ -416,11 +416,11 @@ function FundList({ funds, onSelect, onDelete }: { funds: Fund[]; onSelect: (id:
                                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
                                     <div>
                                         <div style={{ fontSize: 10, color: "#9ca3af", fontWeight: 600 }}>TOTAL INVESTED</div>
-                                        <div style={{ fontSize: 14, fontWeight: 700, color: "#7c3aed" }}>{fmt(totalInvested)}</div>
+                                        <div style={{ fontSize: 14, fontWeight: 700, color: "#7c3aed" }}>{<Money amount={totalInvested} />}</div>
                                     </div>
                                     <div>
                                         <div style={{ fontSize: 10, color: "#9ca3af", fontWeight: 600 }}>CURRENT VALUE</div>
-                                        <div style={{ fontSize: 14, fontWeight: 700, color: "#059669" }}>{currentValue > 0 ? fmt(currentValue) : "—"}</div>
+                                        <div style={{ fontSize: 14, fontWeight: 700, color: "#059669" }}>{currentValue > 0 ? <Money amount={currentValue} /> : "—"}</div>
                                     </div>
                                 </div>
                                 {gain != null && (

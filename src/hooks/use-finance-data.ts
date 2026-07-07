@@ -544,6 +544,7 @@ export function useDeleteFundSnapshot() {
 export interface FixedDepositSnapshot {
   id: string;
   depositId: string;
+  day: number;
   month: number;
   year: number;
   gain: number;
@@ -661,7 +662,7 @@ export function useFixedDepositSnapshots(depositId: string) {
 export function useUpsertFixedDepositSnapshot() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: { depositId: string; month: number; year: number; gain: number }) =>
+    mutationFn: (data: { depositId: string; day: number; month: number; year: number; gain: number }) =>
       put("/api/fixed-deposit-snapshots", data),
     onSuccess: (_, vars) => {
       qc.invalidateQueries({ queryKey: ["fixed-deposit-snapshots", vars.depositId] });
@@ -673,12 +674,147 @@ export function useUpsertFixedDepositSnapshot() {
 export function useDeleteFixedDepositSnapshot() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ depositId, month, year }: { depositId: string; month: number; year: number }) =>
-      del(`/api/fixed-deposit-snapshots?depositId=${depositId}&month=${month}&year=${year}`),
+    mutationFn: ({ depositId, day, month, year }: { depositId: string; day: number; month: number; year: number }) =>
+      del(`/api/fixed-deposit-snapshots?depositId=${depositId}&day=${day}&month=${month}&year=${year}`),
     onSuccess: (_, vars) => {
       qc.invalidateQueries({ queryKey: ["fixed-deposit-snapshots", vars.depositId] });
       qc.invalidateQueries({ queryKey: ["fixed-deposit-groups"] });
     },
+  });
+}
+
+// ── Crypto (COP -> USDW -> BTC) ─────────────────────────────────────────
+
+export interface UsdwPurchase {
+  id: string;
+  date: string;
+  copAmount: number;
+  commissionCop: number;
+  usdwAmount: number;
+  notes: string;
+  createdAt: string;
+}
+
+export interface BtcPurchase {
+  id: string;
+  date: string;
+  usdwAmount: number;
+  commissionUsdw: number;
+  btcPriceUsdw: number;
+  btcAmount: number;
+  notes: string;
+  createdAt: string;
+}
+
+export interface CryptoSnapshot {
+  id: string;
+  day: number;
+  month: number;
+  year: number;
+  usdCopRate: number;
+  btcPriceUsd: number;
+  createdAt: string;
+}
+
+export function useUsdwPurchases() {
+  return useQuery<UsdwPurchase[]>({
+    queryKey: ["usdw-purchases"],
+    queryFn: () => get("/api/usdw-purchases"),
+  });
+}
+
+export function useAddUsdwPurchase() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { date: string; copAmount: number; commissionCop: number; usdwAmount: number; notes?: string }) =>
+      post("/api/usdw-purchases", data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["usdw-purchases"] }),
+  });
+}
+
+export function useDeleteUsdwPurchase() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => del(`/api/usdw-purchases/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["usdw-purchases"] }),
+  });
+}
+
+export function useBtcPurchases() {
+  return useQuery<BtcPurchase[]>({
+    queryKey: ["btc-purchases"],
+    queryFn: () => get("/api/btc-purchases"),
+  });
+}
+
+export function useAddBtcPurchase() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: {
+      date: string;
+      usdwAmount: number;
+      commissionUsdw: number;
+      btcPriceUsdw: number;
+      btcAmount: number;
+      notes?: string;
+    }) => post("/api/btc-purchases", data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["btc-purchases"] }),
+  });
+}
+
+export function useDeleteBtcPurchase() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => del(`/api/btc-purchases/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["btc-purchases"] }),
+  });
+}
+
+export function useCryptoSnapshots() {
+  return useQuery<CryptoSnapshot[]>({
+    queryKey: ["crypto-snapshots"],
+    queryFn: () => get("/api/crypto-snapshots"),
+  });
+}
+
+export function useUpsertCryptoSnapshot() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { day: number; month: number; year: number; usdCopRate: number; btcPriceUsd: number }) =>
+      put("/api/crypto-snapshots", data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["crypto-snapshots"] }),
+  });
+}
+
+export function useDeleteCryptoSnapshot() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ day, month, year }: { day: number; month: number; year: number }) =>
+      del(`/api/crypto-snapshots?day=${day}&month=${month}&year=${year}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["crypto-snapshots"] }),
+  });
+}
+
+export function useCryptoSettings() {
+  return useQuery<{ sellCommission: number; commissionRate: number }>({
+    queryKey: ["crypto-settings"],
+    queryFn: () => get("/api/crypto-settings"),
+  });
+}
+
+export function useUpdateCryptoSellCommission() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (sellCommission: number) => put("/api/crypto-settings", { sellCommission }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["crypto-settings"] }),
+  });
+}
+
+export function useUpdateCryptoCommissionRate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (commissionRate: number) => put("/api/crypto-settings", { commissionRate }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["crypto-settings"] }),
   });
 }
 

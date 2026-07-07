@@ -14,22 +14,29 @@ import {
   useFunds,
   useStockTransactions,
   useStockPriceSnapshots,
+  useUsdwPurchases,
+  useBtcPurchases,
+  useCryptoSnapshots,
+  useCryptoSettings,
   type FixedDepositGroup,
   type Fund as FundType,
   type StockTransaction,
   type StockPriceSnapshot,
 } from "@/hooks/use-finance-data";
+import { computeSummary as computeCryptoSummary, computeCryptoValueAtMonth, effectiveSellCommission } from "./crypto-tab";
 import { useDashboardStore } from "@/stores/dashboard-store";
 import { MONTHS } from "@/lib/constants";
 import { fmt, gainPc } from "@/lib/formatters";
 import Badge from "@/components/ui/badge";
+import Money from "@/components/ui/money";
 import EditableCell from "@/components/ui/editable-cell";
 import StockTransactionsTab from "./stock-transactions-tab";
 import FixedDepositsTab from "./fixed-deposits-tab";
 import FundsTab from "./funds-tab";
+import CryptoTab from "./crypto-tab";
 
 export default function InvestmentsTab() {
-  const [subTab, setSubTab] = useState<"summary" | "funds" | "transactions" | "cdts">("summary");
+  const [subTab, setSubTab] = useState<"summary" | "funds" | "transactions" | "cdts" | "crypto">("summary");
   const { year, setYear, investmentMonth, setInvestmentMonth } = useDashboardStore();
 
   const { data: dbStocks = [] } = useStocks();
@@ -41,7 +48,7 @@ export default function InvestmentsTab() {
     <>
       {/* Sub-tabs */}
       <div style={{ display: "flex", gap: 8, marginBottom: 16, borderBottom: "2px solid #e5e7eb" }}>
-        {(["summary", "funds", "transactions", "cdts"] as const).map((tab) => (
+        {(["summary", "funds", "transactions", "cdts", "crypto"] as const).map((tab) => (
           <button
             key={tab}
             onClick={() => setSubTab(tab)}
@@ -58,7 +65,7 @@ export default function InvestmentsTab() {
               fontSize: 13,
             }}
           >
-            {{ summary: "Summary", funds: "Funds", transactions: "Stock Transactions", cdts: "CDTs" }[tab]}
+            {{ summary: "Summary", funds: "Funds", transactions: "Stock Transactions", cdts: "CDTs", crypto: "Crypto" }[tab]}
           </button>
         ))}
       </div>
@@ -79,6 +86,7 @@ export default function InvestmentsTab() {
       {subTab === "funds" && <FundsTab />}
       {subTab === "transactions" && <StockTransactionsTab />}
       {subTab === "cdts" && <FixedDepositsTab />}
+      {subTab === "crypto" && <CryptoTab />}
     </>
   );
 }
@@ -101,7 +109,7 @@ function GainCell({ gain, pct }: { gain: number; pct: number }) {
   const pos = gain >= 0;
   return (
     <span style={{ color: pos ? "#059669" : "#dc2626", fontWeight: 700 }}>
-      {pos ? "+" : ""}{fmt(gain)} ({pos ? "+" : ""}{pct.toFixed(2)}%)
+      {pos ? "+" : ""}{<Money amount={gain} />} ({pos ? "+" : ""}{pct.toFixed(2)}%)
     </span>
   );
 }
@@ -124,8 +132,8 @@ function CategoryBlock({ title, accentColor, items, showLabel }: {
       <div style={{ background: accentColor + "12", borderBottom: `2px solid ${accentColor}40`, padding: "10px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
         <span style={{ fontWeight: 700, fontSize: 14, color: "#1f2937" }}>{title}</span>
         <div style={{ display: "flex", gap: 20, fontSize: 12, flexWrap: "wrap" }}>
-          <span style={{ color: "#6b7280" }}>Invested: <strong style={{ color: accentColor }}>{fmt(totalInvested)}</strong></span>
-          <span style={{ color: "#6b7280" }}>Current Value: <strong style={{ color: "#059669" }}>{totalCurrent !== null ? fmt(totalCurrent) : "—"}</strong></span>
+          <span style={{ color: "#6b7280" }}>Invested: <strong style={{ color: accentColor }}>{<Money amount={totalInvested} />}</strong></span>
+          <span style={{ color: "#6b7280" }}>Current Value: <strong style={{ color: "#059669" }}>{totalCurrent !== null ? <Money amount={totalCurrent} /> : "—"}</strong></span>
           {gain !== null && <span style={{ color: "#6b7280" }}>Gain/Loss: <GainCell gain={gain} pct={gainPct} /></span>}
           {totalNet !== null && totalNetPct !== null && (
             <span style={{ color: "#6b7280" }}>Net if sold: <GainCell gain={totalNet} pct={totalNetPct} /></span>
@@ -163,20 +171,20 @@ function CategoryBlock({ title, accentColor, items, showLabel }: {
                       </div>
                     </td>
                     {showLabel && <td style={{ padding: "8px 10px", color: "#9ca3af" }}>{item.label || "—"}</td>}
-                    <td style={{ padding: "8px 16px", textAlign: "right", color: accentColor, fontWeight: 600 }}>{fmt(item.invested)}</td>
+                    <td style={{ padding: "8px 16px", textAlign: "right", color: accentColor, fontWeight: 600 }}>{<Money amount={item.invested} />}</td>
                     <td style={{ padding: "8px 16px", textAlign: "right", color: "#059669", fontWeight: 600 }}>
-                      {item.currentValue !== null && item.currentValue > 0 ? fmt(item.currentValue) : "—"}
+                      {item.currentValue !== null && item.currentValue > 0 ? <Money amount={item.currentValue} /> : "—"}
                     </td>
                     <td style={{ padding: "8px 16px", textAlign: "right" }}>
                       {g !== null ? (
-                        <span style={{ color: g >= 0 ? "#059669" : "#dc2626", fontWeight: 700 }}>{g >= 0 ? "+" : ""}{fmt(g)}</span>
+                        <span style={{ color: g >= 0 ? "#059669" : "#dc2626", fontWeight: 700 }}>{g >= 0 ? "+" : ""}{<Money amount={g} />}</span>
                       ) : "—"}
                     </td>
                     {hasSellComm && (
                       <td style={{ padding: "8px 16px", textAlign: "right" }}>
                         {net !== null && netPct !== null ? (
                           <span style={{ color: net >= 0 ? "#059669" : "#dc2626", fontWeight: 700 }}>
-                            {net >= 0 ? "+" : ""}{fmt(net)} ({netPct >= 0 ? "+" : ""}{netPct.toFixed(2)}%)
+                            {net >= 0 ? "+" : ""}{<Money amount={net} />} ({netPct >= 0 ? "+" : ""}{netPct.toFixed(2)}%)
                           </span>
                         ) : "—"}
                       </td>
@@ -238,6 +246,10 @@ function SummaryContent({
   const { data: allTxs = [] } = useStockTransactions();
   const { data: allPriceSnaps = [] } = useStockPriceSnapshots();
   const { data: funds = [] } = useFunds();
+  const { data: usdwPurchases = [] } = useUsdwPurchases();
+  const { data: btcPurchases = [] } = useBtcPurchases();
+  const { data: cryptoSnapshots = [] } = useCryptoSnapshots();
+  const { data: cryptoSettings } = useCryptoSettings();
 
   const cdtItems = useMemo((): CategoryItem[] =>
     depositGroups.map((g, i) => {
@@ -296,6 +308,40 @@ function SummaryContent({
       return { id: f.id, name: f.name, color: f.color, label: f.type?.name, invested, currentValue };
     }), [funds]);
 
+  const cryptoSummary = useMemo(
+    () => computeCryptoSummary(usdwPurchases, btcPurchases, cryptoSnapshots),
+    [usdwPurchases, btcPurchases, cryptoSnapshots]
+  );
+
+  const cryptoItems = useMemo((): CategoryItem[] => {
+    if (usdwPurchases.length === 0 && btcPurchases.length === 0) return [];
+
+    // Cost basis split: both portions were bought at the same weighted-average COP/USD rate.
+    const rate = cryptoSummary.weightedUsdRate;
+    const usdwCurrent = cryptoSummary.usdValueCop;
+    const btcCurrent = cryptoSummary.btcValueCop;
+    const totalCurrent = usdwCurrent + btcCurrent;
+    const totalSellComm = effectiveSellCommission(cryptoSettings?.sellCommission ?? 0, totalCurrent, cryptoSettings?.commissionRate ?? 0.001);
+    const usdwSellComm = totalCurrent > 0 ? Math.round(totalSellComm * (usdwCurrent / totalCurrent)) : 0;
+
+    const items: CategoryItem[] = [];
+    if (usdwPurchases.length > 0) {
+      items.push({
+        id: "crypto-usdw", name: "USDW", color: "#f59e0b",
+        invested: cryptoSummary.usdwHeld * rate, currentValue: usdwCurrent,
+        sellCommission: usdwSellComm,
+      });
+    }
+    if (btcPurchases.length > 0) {
+      items.push({
+        id: "crypto-btc", name: "BTC", color: "#f7931a",
+        invested: cryptoSummary.btcCostUsdw * rate, currentValue: btcCurrent,
+        sellCommission: totalSellComm - usdwSellComm,
+      });
+    }
+    return items;
+  }, [usdwPurchases, btcPurchases, cryptoSummary, cryptoSettings]);
+
   // Form state
   const [showForm, setShowForm] = useState(false);
   const [newInv, setNewInv] = useState({ name: "", typeId: "", invested: 0, color: "#6366f1" });
@@ -312,15 +358,18 @@ function SummaryContent({
   // Default: show category aggregates, hide individual lines
   useEffect(() => {
     if (hiddenInitialized) return;
-    const hasData = Object.keys(txByInv).length > 0 || funds.length > 0 || depositGroups.length > 0;
+    const hasData = Object.keys(txByInv).length > 0 || funds.length > 0 || depositGroups.length > 0
+      || usdwPurchases.length > 0 || btcPurchases.length > 0;
     if (!hasData) return;
     const initialHidden = new Set<string>();
     Object.keys(txByInv).forEach(invId => initialHidden.add(`stock_${invId}`));
     funds.forEach(f => initialHidden.add(`fund_${f.id}`));
     depositGroups.forEach(g => initialHidden.add(`cdt_${g.id}`));
+    if (usdwPurchases.length > 0) initialHidden.add("crypto_usdw");
+    if (btcPurchases.length > 0) initialHidden.add("crypto_btc");
     setHiddenLines(initialHidden);
     setHiddenInitialized(true);
-  }, [txByInv, funds, depositGroups, hiddenInitialized]);
+  }, [txByInv, funds, depositGroups, usdwPurchases, btcPurchases, hiddenInitialized]);
 
   // IDs of investments that are managed by the Stock Transactions module
   const stockInvestmentIds = useMemo(
@@ -466,6 +515,19 @@ function SummaryContent({
       tv += cdtTotalVal;
       if (depositGroups.length > 0) row["CDTs"] = cdtTotalVal;
 
+      // Crypto (USDW + BTC): only from the month of the first purchase onward
+      if (usdwPurchases.length > 0 || btcPurchases.length > 0) {
+        const { invested: cryptoInvested, value: cryptoVal, usdwValue, btcValue } =
+          computeCryptoValueAtMonth(usdwPurchases, btcPurchases, cryptoSnapshots, i);
+        if (cryptoInvested > 0 || cryptoVal > 0) {
+          ti += cryptoInvested;
+          tv += cryptoVal;
+          row["Crypto"] = cryptoVal;
+          if (usdwPurchases.length > 0) row["crypto_usdw"] = usdwValue;
+          if (btcPurchases.length > 0) row["crypto_btc"] = btcValue;
+        }
+      }
+
       const m = i % 12;
       const y = Math.floor(i / 12);
       row.mes = `${MONTHS[m]} ${y}`;
@@ -475,7 +537,7 @@ function SummaryContent({
       data.push(row);
     }
     return data;
-  }, [invs, chartFrom, chartTo, txByInv, priceSnapByInv, funds, depositGroups]);
+  }, [invs, chartFrom, chartTo, txByInv, priceSnapByInv, funds, depositGroups, usdwPurchases, btcPurchases, cryptoSnapshots]);
 
   return (
     <>
@@ -483,6 +545,7 @@ function SummaryContent({
       <CategoryBlock title="CDTs" accentColor="#0891b2" items={cdtItems} showLabel />
       <CategoryBlock title="Stock Transactions" accentColor="#7c3aed" items={stockItems} showLabel />
       <CategoryBlock title="Funds" accentColor="#059669" items={fundItems} showLabel />
+      <CategoryBlock title="Crypto" accentColor="#f59e0b" items={cryptoItems} />
 
       {/* Portfolio Evolution chart */}
       <div style={{ background: "#fff", borderRadius: 12, padding: 16, boxShadow: "0 1px 4px #0001" }}>
@@ -512,6 +575,7 @@ function SummaryContent({
             ...(Object.keys(txByInv).some(id => dbStocks.find(d => d.id === id)) ? [{ key: "Stocks Total", name: "Stocks", color: "#7c3aed" }] : []),
             ...(funds.length > 0 ? [{ key: "Funds Total", name: "Funds", color: "#059669" }] : []),
             ...(depositGroups.length > 0 ? [{ key: "CDTs", name: "CDTs", color: "#0891b2" }] : []),
+            ...(usdwPurchases.length > 0 || btcPurchases.length > 0 ? [{ key: "Crypto", name: "Crypto", color: "#f59e0b" }] : []),
           ].map(({ key, name, color }) => {
             const visible = !hiddenLines.has(key);
             return (
@@ -529,7 +593,7 @@ function SummaryContent({
           })}
         </div>
         {/* Line toggles — individual investments */}
-        {(Object.keys(txByInv).length > 0 || funds.length > 0 || depositGroups.length > 0) && (
+        {(Object.keys(txByInv).length > 0 || funds.length > 0 || depositGroups.length > 0 || usdwPurchases.length > 0 || btcPurchases.length > 0) && (
           <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 14, alignItems: "center" }}>
             <span style={{ fontSize: 10, color: "#9ca3af", marginRight: 4, fontWeight: 600 }}>Individual:</span>
             {[
@@ -540,6 +604,8 @@ function SummaryContent({
               }),
               ...funds.map(fund => ({ key: `fund_${fund.id}`, name: fund.name, color: fund.color })),
               ...depositGroups.map((g, gi) => ({ key: `cdt_${g.id}`, name: g.name, color: CDT_COLORS[gi % CDT_COLORS.length] })),
+              ...(usdwPurchases.length > 0 ? [{ key: "crypto_usdw", name: "USDW", color: "#f59e0b" }] : []),
+              ...(btcPurchases.length > 0 ? [{ key: "crypto_btc", name: "BTC", color: "#f7931a" }] : []),
             ].map(({ key, name, color }) => {
               const visible = !hiddenLines.has(key);
               return (
@@ -591,6 +657,11 @@ function SummaryContent({
                   stroke="#0891b2" strokeWidth={2} strokeDasharray="5 3" dot={{ r: 2 }}
                   hide={hiddenLines.has("CDTs")} />
               )}
+              {(usdwPurchases.length > 0 || btcPurchases.length > 0) && (
+                <Line type="monotone" dataKey="Crypto" name="Crypto"
+                  stroke="#f59e0b" strokeWidth={2} strokeDasharray="5 3" dot={{ r: 2 }}
+                  hide={hiddenLines.has("Crypto")} />
+              )}
               {/* Traditional investment lines */}
               {invs.map((inv) => (
                 <Line key={inv.id} type="monotone" dataKey={inv.id} name={inv.name}
@@ -619,6 +690,17 @@ function SummaryContent({
                   stroke={CDT_COLORS[gi % CDT_COLORS.length]} strokeWidth={1.5} dot={{ r: 2 }}
                   hide={hiddenLines.has(`cdt_${g.id}`)} />
               ))}
+              {/* Individual USDW / BTC lines */}
+              {usdwPurchases.length > 0 && (
+                <Line type="monotone" dataKey="crypto_usdw" name="USDW"
+                  stroke="#f59e0b" strokeWidth={1.5} dot={{ r: 2 }}
+                  hide={hiddenLines.has("crypto_usdw")} />
+              )}
+              {btcPurchases.length > 0 && (
+                <Line type="monotone" dataKey="crypto_btc" name="BTC"
+                  stroke="#f7931a" strokeWidth={1.5} dot={{ r: 2 }}
+                  hide={hiddenLines.has("crypto_btc")} />
+              )}
             </LineChart>
           </ResponsiveContainer>
         )}

@@ -1,5 +1,7 @@
 "use client";
 
+import type { ReactNode } from "react";
+
 interface KpiTag {
   bg: string;
   fg: string;
@@ -8,7 +10,7 @@ interface KpiTag {
 
 interface KpiProps {
   title: string;
-  value: string;
+  value: ReactNode;
   sub?: string;
   color: string;
   tag?: KpiTag;

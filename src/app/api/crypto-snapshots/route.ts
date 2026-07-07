@@ -2,16 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getAuthUser } from "@/lib/auth";
 
-export async function GET(req: NextRequest) {
+export async function GET() {
   const user = await getAuthUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { searchParams } = new URL(req.url);
-  const depositId = searchParams.get("depositId");
-  if (!depositId) return NextResponse.json({ error: "Missing depositId" }, { status: 400 });
-
-  const snapshots = await prisma.fixedDepositSnapshot.findMany({
-    where: { depositId, userId: user.id },
+  const snapshots = await prisma.cryptoSnapshot.findMany({
+    where: { userId: user.id },
     orderBy: [{ year: "asc" }, { month: "asc" }, { day: "asc" }],
   });
   return NextResponse.json(snapshots);
@@ -23,28 +19,22 @@ export async function PUT(req: NextRequest) {
 
   const body = await req.json();
 
-  // Verify deposit belongs to user
-  const deposit = await prisma.fixedDeposit.findFirst({
-    where: { id: body.depositId, userId: user.id },
-  });
-  if (!deposit) return NextResponse.json({ error: "Not found" }, { status: 404 });
-
-  const snapshot = await prisma.fixedDepositSnapshot.upsert({
+  const snapshot = await prisma.cryptoSnapshot.upsert({
     where: {
-      depositId_day_month_year: {
-        depositId: body.depositId,
+      userId_day_month_year: {
+        userId: user.id,
         day: body.day,
         month: body.month,
         year: body.year,
       },
     },
-    update: { gain: body.gain },
+    update: { usdCopRate: body.usdCopRate, btcPriceUsd: body.btcPriceUsd },
     create: {
-      depositId: body.depositId,
       day: body.day,
       month: body.month,
       year: body.year,
-      gain: body.gain,
+      usdCopRate: body.usdCopRate,
+      btcPriceUsd: body.btcPriceUsd,
       userId: user.id,
     },
   });
@@ -56,14 +46,13 @@ export async function DELETE(req: NextRequest) {
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { searchParams } = new URL(req.url);
-  const depositId = searchParams.get("depositId");
   const day = searchParams.get("day");
   const month = searchParams.get("month");
   const year = searchParams.get("year");
-  if (!depositId || !day || !month || !year) return NextResponse.json({ error: "Missing params" }, { status: 400 });
+  if (!day || !month || !year) return NextResponse.json({ error: "Missing params" }, { status: 400 });
 
-  await prisma.fixedDepositSnapshot.deleteMany({
-    where: { depositId, day: Number(day), month: Number(month), year: Number(year), userId: user.id },
+  await prisma.cryptoSnapshot.deleteMany({
+    where: { userId: user.id, day: Number(day), month: Number(month), year: Number(year) },
   });
   return NextResponse.json({ ok: true });
 }

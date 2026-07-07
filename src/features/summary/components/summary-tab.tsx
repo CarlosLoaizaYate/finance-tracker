@@ -16,6 +16,10 @@ import {
   useStockPriceSnapshots,
   useFunds,
   useFixedDepositGroups,
+  useUsdwPurchases,
+  useBtcPurchases,
+  useCryptoSnapshots,
+  useCryptoSettings,
   effectiveIncomeAmount,
 } from "@/hooks/use-finance-data";
 import { useDashboardStore } from "@/stores/dashboard-store";
@@ -23,6 +27,8 @@ import { MONTHS } from "@/lib/constants";
 import { fmt, gainPc } from "@/lib/formatters";
 import Kpi from "@/components/ui/kpi";
 import Badge from "@/components/ui/badge";
+import Money from "@/components/ui/money";
+import { computeSummary as computeCryptoSummary, effectiveSellCommission } from "@/features/investments/components/crypto-tab";
 
 export default function SummaryTab() {
   const { year, monthFrom, monthTo, setMonthFrom, setMonthTo } = useDashboardStore();
@@ -143,13 +149,13 @@ export default function SummaryTab() {
               <div key={src.id}>
                 <div style={{ fontSize: 11, opacity: 0.8 }}>{src.name}</div>
                 <div style={{ fontSize: 17, fontWeight: 700 }}>
-                  {fmt(effectiveIncomeAmount(src, curMonth, year))}
+                  {<Money amount={effectiveIncomeAmount(src, curMonth, year)} />}
                 </div>
               </div>
             ))}
             <div style={{ borderLeft: "1px solid rgba(255,255,255,0.3)", paddingLeft: 20 }}>
               <div style={{ fontSize: 11, opacity: 0.8 }}>Total Monthly Income</div>
-              <div style={{ fontSize: 20, fontWeight: 800 }}>{fmt(currentIncomeTotal)}</div>
+              <div style={{ fontSize: 20, fontWeight: 800 }}>{<Money amount={currentIncomeTotal} />}</div>
             </div>
           </>
         )}
@@ -157,9 +163,9 @@ export default function SummaryTab() {
 
       {/* KPIs */}
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 16 }}>
-        <Kpi title="Total Income" value={fmt(totals.ingresos)} color="#6366f1" />
-        <Kpi title="Total Expenses" value={fmt(totals.gastos)} color="#ef4444" />
-        <Kpi title="Available" value={fmt(totals.libre)} color={totals.libre >= 0 ? "#10b981" : "#ef4444"}
+        <Kpi title="Total Income" value={<Money amount={totals.ingresos} />} color="#6366f1" />
+        <Kpi title="Total Expenses" value={<Money amount={totals.gastos} />} color="#ef4444" />
+        <Kpi title="Available" value={<Money amount={totals.libre} />} color={totals.libre >= 0 ? "#10b981" : "#ef4444"}
           tag={totals.libre >= 0
             ? { bg: "#d1fae5", fg: "#065f46", text: "Positive" }
             : { bg: "#fee2e2", fg: "#991b1b", text: "Deficit" }} />
@@ -221,6 +227,10 @@ function InvestmentsSummarySection() {
   const { data: allPriceSnaps = [] } = useStockPriceSnapshots();
   const { data: funds = [] } = useFunds();
   const { data: depositGroups = [] } = useFixedDepositGroups();
+  const { data: usdwPurchases = [] } = useUsdwPurchases();
+  const { data: btcPurchases = [] } = useBtcPurchases();
+  const { data: cryptoSnapshots = [] } = useCryptoSnapshots();
+  const { data: cryptoSettings } = useCryptoSettings();
 
   const txByInv = useMemo(() => {
     const map: Record<string, typeof allTxs> = {};
@@ -243,6 +253,20 @@ function InvestmentsSummarySection() {
         return s + txs.reduce((t, tx) => t + tx.quantity * tx.priceUnit + tx.commission, 0);
       }, 0),
     [dbStocks, txByInv]);
+
+  // Crypto (USDW + BTC)
+  const cryptoSummary = useMemo(
+    () => computeCryptoSummary(usdwPurchases, btcPurchases, cryptoSnapshots),
+    [usdwPurchases, btcPurchases, cryptoSnapshots]
+  );
+  const cryptoInvested = useMemo(
+    () => usdwPurchases.reduce((s, p) => s + p.copAmount, 0),
+    [usdwPurchases]
+  );
+  const cryptoCurrentValue = cryptoSummary.usdValueCop + cryptoSummary.btcValueCop;
+  const cryptoSellCommission = effectiveSellCommission(
+    cryptoSettings?.sellCommission ?? 0, cryptoCurrentValue, cryptoSettings?.commissionRate ?? 0.001
+  );
 
   const stocksCurrentValue = useMemo(() => {
     const items = dbStocks.filter(inv => txByInv[inv.id]?.length);
@@ -308,23 +332,29 @@ function InvestmentsSummarySection() {
       .reduce((s, inv) => s + inv.sellCommission, 0),
     [dbStocks, txByInv]);
 
-  const totalInvested = stocksInvested + fundsInvested + cdtsInvested;
+  const hasCrypto = usdwPurchases.length > 0 || btcPurchases.length > 0;
+  const totalInvested = stocksInvested + fundsInvested + cdtsInvested + (hasCrypto ? cryptoInvested : 0);
   const hasStocks = dbStocks.some(inv => txByInv[inv.id]?.length);
   const hasFunds = funds.length > 0;
   const hasCdts = depositGroups.length > 0;
 
-  if (!hasStocks && !hasFunds && !hasCdts) return null;
+  if (!hasStocks && !hasFunds && !hasCdts && !hasCrypto) return null;
 
   const rows: { label: string; color: string; invested: number; current: number | null; sellComm?: number }[] = [];
   if (hasStocks) rows.push({ label: "Stocks", color: "#6366f1", invested: stocksInvested, current: stocksCurrentValue, sellComm: stocksSellCommission });
   if (hasFunds)  rows.push({ label: "Funds",  color: "#0891b2", invested: fundsInvested,  current: fundsCurrentValue });
   if (hasCdts)   rows.push({ label: "CDTs",   color: "#059669", invested: cdtsInvested,   current: cdtsCurrentValue });
+  if (hasCrypto) rows.push({ label: "Crypto", color: "#f59e0b", invested: cryptoInvested, current: cryptoCurrentValue, sellComm: cryptoSellCommission });
 
   const totalCurrent = rows.every(r => r.current !== null)
     ? rows.reduce((s, r) => s + (r.current ?? 0), 0)
     : null;
   const totalGain = totalCurrent !== null ? totalCurrent - totalInvested : null;
   const totalGainPct = totalGain !== null && totalInvested > 0 ? (totalGain / totalInvested) * 100 : null;
+  const hasSellComm = rows.some(r => r.sellComm !== undefined);
+  const totalSellComm = rows.reduce((s, r) => s + (r.sellComm ?? 0), 0);
+  const totalNet = totalGain !== null && hasSellComm ? totalGain - totalSellComm : null;
+  const totalNetPct = totalNet !== null && totalInvested > 0 ? (totalNet / totalInvested) * 100 : null;
 
   return (
     <div style={{ background: "#fff", borderRadius: 12, padding: 16, boxShadow: "0 1px 4px #0001", marginBottom: 16 }}>
@@ -332,18 +362,26 @@ function InvestmentsSummarySection() {
         <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700 }}>Investments</h3>
         <div style={{ display: "flex", gap: 20, fontSize: 12, flexWrap: "wrap" }}>
           <span style={{ color: "#6b7280" }}>
-            Invested: <strong style={{ color: "#6366f1" }}>{fmt(totalInvested)}</strong>
+            Invested: <strong style={{ color: "#6366f1" }}>{<Money amount={totalInvested} />}</strong>
           </span>
           {totalCurrent !== null && (
             <span style={{ color: "#6b7280" }}>
-              Current: <strong style={{ color: "#059669" }}>{fmt(totalCurrent)}</strong>
+              Current: <strong style={{ color: "#059669" }}>{<Money amount={totalCurrent} />}</strong>
             </span>
           )}
           {totalGain !== null && totalGainPct !== null && (
             <span style={{ color: "#6b7280" }}>
               Gain:{" "}
               <strong style={{ color: totalGain >= 0 ? "#059669" : "#dc2626" }}>
-                {totalGain >= 0 ? "+" : ""}{fmt(totalGain)} ({totalGainPct >= 0 ? "+" : ""}{totalGainPct.toFixed(2)}%)
+                {totalGain >= 0 ? "+" : ""}{<Money amount={totalGain} />} ({totalGainPct >= 0 ? "+" : ""}{totalGainPct.toFixed(2)}%)
+              </strong>
+            </span>
+          )}
+          {totalNet !== null && totalNetPct !== null && (
+            <span style={{ color: "#6b7280" }}>
+              Net if sold:{" "}
+              <strong style={{ color: totalNet >= 0 ? "#059669" : "#dc2626" }}>
+                {totalNet >= 0 ? "+" : ""}{<Money amount={totalNet} />} ({totalNetPct >= 0 ? "+" : ""}{totalNetPct.toFixed(2)}%)
               </strong>
             </span>
           )}
@@ -365,19 +403,19 @@ function InvestmentsSummarySection() {
             }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: row.color, marginBottom: 6 }}>{row.label}</div>
               <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 2 }}>
-                Invested: <strong style={{ color: "#374151" }}>{fmt(row.invested)}</strong>
+                Invested: <strong style={{ color: "#374151" }}>{<Money amount={row.invested} />}</strong>
               </div>
               <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 2 }}>
                 Current:{" "}
                 <strong style={{ color: row.current !== null ? "#059669" : "#9ca3af" }}>
-                  {row.current !== null ? fmt(row.current) : "—"}
+                  {row.current !== null ? <Money amount={row.current} /> : "—"}
                 </strong>
               </div>
               {gain !== null && gainPct !== null && (
                 <div style={{ fontSize: 11, marginTop: 4, color: "#6b7280" }}>
                   Gain:{" "}
                   <strong style={{ color: gain >= 0 ? "#059669" : "#dc2626" }}>
-                    {gain >= 0 ? "+" : ""}{fmt(gain)} ({gainPct >= 0 ? "+" : ""}{gainPct.toFixed(2)}%)
+                    {gain >= 0 ? "+" : ""}{<Money amount={gain} />} ({gainPct >= 0 ? "+" : ""}{gainPct.toFixed(2)}%)
                   </strong>
                 </div>
               )}
@@ -385,7 +423,7 @@ function InvestmentsSummarySection() {
                 <div style={{ fontSize: 11, marginTop: 2, color: "#6b7280" }}>
                   Net if sold:{" "}
                   <strong style={{ color: net >= 0 ? "#059669" : "#dc2626" }}>
-                    {net >= 0 ? "+" : ""}{fmt(net)} ({netPct >= 0 ? "+" : ""}{netPct.toFixed(2)}%)
+                    {net >= 0 ? "+" : ""}{<Money amount={net} />} ({netPct >= 0 ? "+" : ""}{netPct.toFixed(2)}%)
                   </strong>
                 </div>
               )}
@@ -460,6 +498,9 @@ function InvestmentChartsSection() {
   const { data: allPriceSnaps = [] } = useStockPriceSnapshots();
   const { data: funds = [] } = useFunds();
   const { data: depositGroups = [] } = useFixedDepositGroups();
+  const { data: usdwPurchases = [] } = useUsdwPurchases();
+  const { data: btcPurchases = [] } = useBtcPurchases();
+  const { data: cryptoSnapshots = [] } = useCryptoSnapshots();
 
   const txByInv = useMemo(() => {
     const map: Record<string, typeof allTxs> = {};
@@ -516,8 +557,14 @@ function InvestmentChartsSection() {
       result.push({ name: "CDTs", color: "#059669", invested, current });
     }
 
+    if (usdwPurchases.length > 0 || btcPurchases.length > 0) {
+      const invested = usdwPurchases.reduce((s, p) => s + p.copAmount, 0);
+      const summary = computeCryptoSummary(usdwPurchases, btcPurchases, cryptoSnapshots);
+      result.push({ name: "Crypto", color: "#f59e0b", invested, current: summary.usdValueCop + summary.btcValueCop });
+    }
+
     return result;
-  }, [dbStocks, txByInv, priceSnapByInv, funds, depositGroups]);
+  }, [dbStocks, txByInv, priceSnapByInv, funds, depositGroups, usdwPurchases, btcPurchases, cryptoSnapshots]);
 
   if (rows.length === 0) return null;
 
@@ -541,12 +588,12 @@ function InvestmentChartsSection() {
         <div style={{ fontWeight: 700, marginBottom: 4 }}>{label}</div>
         {payload.map((p: any) => (
           <div key={p.name} style={{ color: p.color ?? "#374151" }}>
-            {p.name}: <strong>{fmt(p.value)}</strong>
+            {p.name}: <strong>{<Money amount={p.value} />}</strong>
           </div>
         ))}
         {gain !== null && gainPct !== null && (
           <div style={{ marginTop: 4, color: gain >= 0 ? "#059669" : "#dc2626", fontWeight: 600 }}>
-            Gain: {gain >= 0 ? "+" : ""}{fmt(gain)} ({gainPct >= 0 ? "+" : ""}{gainPct.toFixed(2)}%)
+            Gain: {gain >= 0 ? "+" : ""}{<Money amount={gain} />} ({gainPct >= 0 ? "+" : ""}{gainPct.toFixed(2)}%)
           </div>
         )}
       </div>
@@ -573,7 +620,7 @@ function InvestmentChartsSection() {
             <span key={d.name} style={{ fontSize: 11, display: "flex", alignItems: "center", gap: 4 }}>
               <span style={{ width: 10, height: 10, borderRadius: 3, background: d.color, display: "inline-block" }} />
               <span style={{ color: "#374151", fontWeight: 600 }}>{d.name}</span>
-              <span style={{ color: "#9ca3af" }}>{fmt(d.value)}</span>
+              <span style={{ color: "#9ca3af" }}>{<Money amount={d.value} />}</span>
             </span>
           ))}
         </div>

@@ -18,6 +18,7 @@ import {
   type FixedDepositSnapshot,
 } from "@/hooks/use-finance-data";
 import { fmt } from "@/lib/formatters";
+import Money from "@/components/ui/money";
 
 type TermUnit = "DAYS" | "MONTHS";
 
@@ -102,6 +103,7 @@ function buildMonthlyHistory(cycle: FixedDeposit) {
 
     return {
       label: d.toLocaleDateString("en-US", { day: "2-digit", month: "short", year: "numeric" }),
+      day: d.getDate(),
       month: d.getMonth() + 1,
       year: d.getFullYear(),
       daysElapsed,
@@ -119,6 +121,12 @@ function formatDate(iso: string): string {
 
 function isActive(cycle: FixedDeposit): boolean {
   return cycle.earnedInterest === null;
+}
+
+function compareSnapshots(a: FixedDepositSnapshot, b: FixedDepositSnapshot): number {
+  if (a.year !== b.year) return a.year - b.year;
+  if (a.month !== b.month) return a.month - b.month;
+  return a.day - b.day;
 }
 
 interface GroupSummary {
@@ -141,14 +149,12 @@ function computeSummary(group: FixedDepositGroup): GroupSummary {
   // Real data: all snapshots across all cycles, ordered chronologically
   const allSnaps = sorted.flatMap(c =>
     (c.snapshots ?? []).map(s => ({ ...s, capital: c.capital }))
-  ).sort((a, b) => a.year !== b.year ? a.year - b.year : a.month - b.month);
+  ).sort(compareSnapshots);
 
   // snap.gain stores the TOTAL CDT VALUE at that date (not a monthly increment)
   // Per-cycle gain = lastSnapshot.gain - cycle.capital
   const realAccumulatedGain = sorted.reduce((total, cycle) => {
-    const cycleSnaps = (cycle.snapshots ?? []).sort((a, b) =>
-      a.year !== b.year ? a.year - b.year : a.month - b.month
-    );
+    const cycleSnaps = (cycle.snapshots ?? []).sort(compareSnapshots);
     const last = cycleSnaps.at(-1);
     return total + (last ? last.gain - cycle.capital : 0);
   }, 0);
@@ -158,7 +164,7 @@ function computeSummary(group: FixedDepositGroup): GroupSummary {
   // Current value = last snapshot value of the most recent cycle that has data
   const lastCycleWithData = [...sorted].reverse().find(c => (c.snapshots ?? []).length > 0);
   const lastSnap = lastCycleWithData
-    ? [...(lastCycleWithData.snapshots ?? [])].sort((a, b) => a.year !== b.year ? a.year - b.year : a.month - b.month).at(-1)
+    ? [...(lastCycleWithData.snapshots ?? [])].sort(compareSnapshots).at(-1)
     : null;
   const baseCycle = activeCycle ?? sorted.at(-1);
   const currentValue = lastSnap ? lastSnap.gain : (baseCycle?.capital ?? 0);
@@ -221,16 +227,16 @@ function SummaryCards({ summary }: { summary: GroupSummary }) {
     <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 20 }}>
       <div style={{ ...card, textAlign: "center" }}>
         <div style={{ fontSize: 11, color: "#9ca3af", marginBottom: 4 }}>Initial capital</div>
-        <div style={{ fontSize: 20, fontWeight: 700, color: "#6b7280" }}>{fmt(summary.initialCapital)}</div>
+        <div style={{ fontSize: 20, fontWeight: 700, color: "#6b7280" }}>{<Money amount={summary.initialCapital} />}</div>
       </div>
       <div style={{ ...card, textAlign: "center" }}>
         <div style={{ fontSize: 11, color: "#9ca3af", marginBottom: 4 }}>Total invested</div>
-        <div style={{ fontSize: 20, fontWeight: 700, color: "#2563eb" }}>{fmt(summary.totalInvested)}</div>
+        <div style={{ fontSize: 20, fontWeight: 700, color: "#2563eb" }}>{<Money amount={summary.totalInvested} />}</div>
       </div>
       <div style={{ ...card, textAlign: "center" }}>
         <div style={{ fontSize: 11, color: "#9ca3af", marginBottom: 4 }}>Accumulated real gain</div>
         <div style={{ fontSize: 20, fontWeight: 700, color: "#16a34a" }}>
-          {summary.hasRealData ? `+${fmt(summary.realAccumulatedGain)}` : "—"}
+          {summary.hasRealData ? <>+<Money amount={summary.realAccumulatedGain} /></> : "—"}
         </div>
         {summary.hasRealData && (
           <div style={{ fontSize: 11, marginTop: 2 }}>
@@ -247,7 +253,7 @@ function SummaryCards({ summary }: { summary: GroupSummary }) {
       <div style={{ ...card, textAlign: "center" }}>
         <div style={{ fontSize: 11, color: "#9ca3af", marginBottom: 4 }}>Current value</div>
         <div style={{ fontSize: 20, fontWeight: 700, color: "#7c3aed" }}>
-          {fmt(summary.currentValue)}
+          {<Money amount={summary.currentValue} />}
         </div>
         {!summary.hasRealData && (
           <div style={{ fontSize: 10, color: "#9ca3af", marginTop: 2 }}>No real data yet</div>
@@ -297,20 +303,20 @@ function CycleMonthlyHistory({ cycle }: { cycle: FixedDeposit }) {
   const deleteMut = useDeleteFixedDepositSnapshot();
 
   const snapshotMap = useMemo(
-    () => new Map(snapshots.map(s => [`${s.year}-${s.month}`, s])),
+    () => new Map(snapshots.map(s => [`${s.year}-${s.month}-${s.day}`, s])),
     [snapshots]
   );
 
   const projected = useMemo(() => buildMonthlyHistory(cycle), [cycle]);
 
-  function handleSave(month: number, year: number, value: string) {
+  function handleSave(day: number, month: number, year: number, value: string) {
     const gain = Number(value.replace(/\D/g, ""));
     if (isNaN(gain)) return;
-    upsertMut.mutate({ depositId: cycle.id, month, year, gain });
+    upsertMut.mutate({ depositId: cycle.id, day, month, year, gain });
   }
 
-  function handleDelete(month: number, year: number) {
-    deleteMut.mutate({ depositId: cycle.id, month, year });
+  function handleDelete(day: number, month: number, year: number) {
+    deleteMut.mutate({ depositId: cycle.id, day, month, year });
   }
 
   return (
@@ -323,16 +329,12 @@ function CycleMonthlyHistory({ cycle }: { cycle: FixedDeposit }) {
         </tr>
       </thead>
       <tbody>
-        {projected.map((pt, i) => {
-          const monthKey = `${pt.year}-${pt.month}`;
-          // Only the LAST row in a given month gets the snapshot (e.g. Jul 31 > Jul 1)
-          const isLastInMonth = projected.findIndex(
-            (p, j) => j > i && p.year === pt.year && p.month === pt.month
-          ) === -1;
-          const snap = isLastInMonth ? (snapshotMap.get(monthKey) ?? null) : null;
+        {projected.map(pt => {
+          const snapKey = `${pt.year}-${pt.month}-${pt.day}`;
+          const snap = snapshotMap.get(snapKey) ?? null;
           return (
             <MonthRow
-              key={`${pt.year}-${pt.month}-${pt.daysElapsed}`}
+              key={`${pt.year}-${pt.month}-${pt.day}-${pt.daysElapsed}`}
               pt={pt}
               capital={cycle.capital}
               snap={snap}
@@ -350,6 +352,7 @@ function CycleMonthlyHistory({ cycle }: { cycle: FixedDeposit }) {
 
 interface MonthlyPoint {
   label: string;
+  day: number;
   month: number;
   year: number;
   daysElapsed: number;
@@ -364,8 +367,8 @@ interface MonthRowProps {
   capital: number;
   snap: FixedDepositSnapshot | null;
   allSnaps: FixedDepositSnapshot[];
-  onSave: (month: number, year: number, value: string) => void;
-  onDelete: (month: number, year: number) => void;
+  onSave: (day: number, month: number, year: number, value: string) => void;
+  onDelete: (day: number, month: number, year: number) => void;
   saving: boolean;
 }
 
@@ -382,7 +385,7 @@ function MonthRow({ pt, capital, snap, allSnaps, onSave, onDelete, saving }: Mon
   const hasReal = snap !== null;
 
   function handleSave() {
-    onSave(pt.month, pt.year, value);
+    onSave(pt.day, pt.month, pt.year, value);
     setEditing(false);
   }
 
@@ -399,7 +402,7 @@ function MonthRow({ pt, capital, snap, allSnaps, onSave, onDelete, saving }: Mon
         {pt.daysElapsed === 0 ? "—" : `day ${pt.daysElapsed}`}
       </td>
       {/* Proyección: capital + ganancia proyectada acumulada */}
-      <td style={{ padding: "7px 10px", fontSize: 12, color: "#6b7280" }}>{fmt(pt.projectedValue)}</td>
+      <td style={{ padding: "7px 10px", fontSize: 12, color: "#6b7280" }}>{<Money amount={pt.projectedValue} />}</td>
       {/* Ganancia real: usuario ingresa valor total del CDT; se muestra ese valor */}
       <td style={{ padding: "7px 10px", fontSize: 12 }}>
         {editing ? (
@@ -423,10 +426,10 @@ function MonthRow({ pt, capital, snap, allSnaps, onSave, onDelete, saving }: Mon
               onClick={() => { setValue(String(snap.gain)); setEditing(true); }}
               title="Click to edit"
             >
-              {fmt(realValue)}
+              {<Money amount={realValue} />}
             </span>
             <button
-              onClick={() => onDelete(pt.month, pt.year)}
+              onClick={() => onDelete(pt.day, pt.month, pt.year)}
               style={{ background: "none", borderTop: "none", borderLeft: "none", borderRight: "none", borderBottom: "none", cursor: "pointer", color: "#d1d5db", fontSize: 11, padding: 0 }}
               title="Delete"
             >✕</button>
@@ -439,7 +442,7 @@ function MonthRow({ pt, capital, snap, allSnaps, onSave, onDelete, saving }: Mon
       </td>
       {/* Ganancia acumulada real: solo los intereses */}
       <td style={{ padding: "7px 10px", fontSize: 12, color: hasReal ? "#16a34a" : "#9ca3af", fontWeight: hasReal ? 600 : 400 }}>
-        {hasReal ? `+${fmt(cumulativeReal)}` : "—"}
+        {hasReal ? <>+<Money amount={cumulativeReal} /></> : "—"}
       </td>
       {/* % rentabilidad */}
       <td style={{ padding: "7px 10px", fontSize: 12 }}>
@@ -475,7 +478,7 @@ function CycleRow({ cycle, index, onSaveInterest, onDelete }: CycleRowProps) {
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState(String(cycle.earnedInterest ?? 0));
   // snap.gain = total CDT value → gain for this cycle = lastSnap.gain - capital
-  const sortedSnaps = [...(cycle.snapshots ?? [])].sort((a, b) => a.year !== b.year ? a.year - b.year : a.month - b.month);
+  const sortedSnaps = [...(cycle.snapshots ?? [])].sort(compareSnapshots);
   const lastSnap = sortedSnaps.at(-1);
   const realAccGain = lastSnap ? lastSnap.gain - cycle.capital : 0;
   const hasRealSnaps = sortedSnaps.length > 0;
@@ -498,9 +501,9 @@ function CycleRow({ cycle, index, onSaveInterest, onDelete }: CycleRowProps) {
     <>
     <tr style={{ borderBottom: "1px solid #f3f4f6" }}>
       <td style={{ padding: "10px 12px", fontSize: 13, color: "#6b7280" }}>Cycle {index + 1}</td>
-      <td style={{ padding: "10px 12px", fontSize: 13, fontWeight: 500 }}>{fmt(cycle.capital)}</td>
+      <td style={{ padding: "10px 12px", fontSize: 13, fontWeight: 500 }}>{<Money amount={cycle.capital} />}</td>
       <td style={{ padding: "10px 12px", fontSize: 13, color: "#2563eb" }}>
-        {index === 0 ? fmt(cycle.capitalAdded) : `+${fmt(cycle.capitalAdded)}`}
+        {index === 0 ? <Money amount={cycle.capitalAdded} /> : <>+<Money amount={cycle.capitalAdded} /></>}
       </td>
       <td style={{ padding: "10px 12px", fontSize: 13 }}>{cycle.interestRate}% EA · {termLabel(cycle.term, cycle.termUnit)}</td>
       <td style={{ padding: "10px 12px", fontSize: 13 }}>{formatDate(cycle.startDate)}</td>
@@ -519,16 +522,16 @@ function CycleRow({ cycle, index, onSaveInterest, onDelete }: CycleRowProps) {
             <button onClick={() => setEditing(false)} style={{ ...ghost, padding: "3px 8px", fontSize: 12 }}>✕</button>
           </div>
         ) : hasRealSnaps ? (
-          <span style={{ color: "#16a34a", fontWeight: 600 }}>+{fmt(realAccGain)}</span>
+          <span style={{ color: "#16a34a", fontWeight: 600 }}>+{<Money amount={realAccGain} />}</span>
         ) : active ? (
-          <span style={{ color: "#9ca3af" }}>~{fmt(expected - cycle.capital)}</span>
+          <span style={{ color: "#9ca3af" }}>~{<Money amount={expected - cycle.capital} />}</span>
         ) : (
           <span
             style={{ cursor: "pointer", borderBottom: "1px dashed #16a34a" }}
             onClick={() => { setEditValue(String(cycle.earnedInterest ?? 0)); setEditing(true); }}
             title="Click to edit"
           >
-            {fmt(cycle.earnedInterest ?? 0)}
+            {<Money amount={cycle.earnedInterest ?? 0} />}
           </span>
         )}
       </td>
@@ -669,8 +672,8 @@ function NewGroupForm({ onSave, onCancel, loading }: NewGroupFormProps) {
         <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 12 }}>
           Maturity: <strong>{formatDate(endDate)}</strong>
           {expectedValue !== null && <>
-            {" "}· Expected value: <strong style={{ color: "#16a34a" }}>{fmt(expectedValue)}</strong>
-            {" "}· Estimated interest: <strong style={{ color: "#16a34a" }}>{fmt(expectedValue - Number(capital.replace(/\D/g, "")))}</strong>
+            {" "}· Expected value: <strong style={{ color: "#16a34a" }}>{<Money amount={expectedValue} />}</strong>
+            {" "}· Estimated interest: <strong style={{ color: "#16a34a" }}>{<Money amount={expectedValue - Number(capital.replace(/\D/g, ""))} />}</strong>
           </>}
         </div>
       )}
@@ -698,7 +701,7 @@ interface RenewFormProps {
 }
 
 function RenewForm({ group, prevCycle, onSave, onCancel, loading }: RenewFormProps) {
-  const sortedSnaps = [...(prevCycle.snapshots ?? [])].sort((a, b) => a.year !== b.year ? a.year - b.year : a.month - b.month);
+  const sortedSnaps = [...(prevCycle.snapshots ?? [])].sort(compareSnapshots);
   const lastSnap = sortedSnaps.at(-1);
   const hasRealSnaps = sortedSnaps.length > 0;
   const realAccGain = lastSnap ? lastSnap.gain - prevCycle.capital : 0;
@@ -738,9 +741,9 @@ function RenewForm({ group, prevCycle, onSave, onCancel, loading }: RenewFormPro
         Renew CDT — {group.name}
       </div>
       <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 12 }}>
-        Previous cycle value: <strong>{fmt(prevValue)}</strong>
+        Previous cycle value: <strong>{<Money amount={prevValue} />}</strong>
         <span style={{ marginLeft: 6, color: "#9ca3af" }}>
-          ({fmt(prevCycle.capital)} capital{hasRealSnaps ? ` + ${fmt(realAccGain)} real gain` : prevCycle.earnedInterest ? ` + ${fmt(prevCycle.earnedInterest)} interest` : " no real data"})
+          (<Money amount={prevCycle.capital} /> capital{hasRealSnaps ? <> + <Money amount={realAccGain} /> real gain</> : prevCycle.earnedInterest ? <> + <Money amount={prevCycle.earnedInterest} /> interest</> : " no real data"})
         </span>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 12, marginBottom: 12 }}>
@@ -773,9 +776,9 @@ function RenewForm({ group, prevCycle, onSave, onCancel, loading }: RenewFormPro
         </div>
       </div>
       <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 12 }}>
-        New capital: <strong>{fmt(newCapital)}</strong>
-        {capitalAdded > 0 && <span> ({fmt(prevValue)} + {fmt(capitalAdded)})</span>}
-        {" "}· Expected value: <strong style={{ color: "#16a34a" }}>{fmt(expectedValue)}</strong>
+        New capital: <strong>{<Money amount={newCapital} />}</strong>
+        {capitalAdded > 0 && <span> ({<Money amount={prevValue} />} + {<Money amount={capitalAdded} />})</span>}
+        {" "}· Expected value: <strong style={{ color: "#16a34a" }}>{<Money amount={expectedValue} />}</strong>
         {endDate && <>{" "}· Maturity: <strong>{formatDate(endDate)}</strong></>}
       </div>
       <div style={{ display: "flex", gap: 8 }}>
@@ -805,7 +808,7 @@ function CloseCycleForm({ cycle, onSave, onCancel, loading }: CloseCycleFormProp
     <div style={{ ...card, marginBottom: 16, borderColor: "#bbf7d0" }}>
       <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10, color: "#374151" }}>Close cycle</div>
       <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 10 }}>
-        Enter the actual interest earned in this cycle (estimated: {fmt(estimated)}).
+        Enter the actual interest earned in this cycle (estimated: {<Money amount={estimated} />}).
       </div>
       <div style={{ display: "flex", gap: 10, alignItems: "flex-end" }}>
         <div style={{ width: 200 }}>
@@ -969,16 +972,16 @@ export default function FixedDepositsTab() {
               </div>
               <div style={{ textAlign: "right" }}>
                 <div style={{ fontSize: 11, color: "#9ca3af" }}>Total invested</div>
-                <div style={{ fontSize: 15, fontWeight: 700, color: "#2563eb" }}>{fmt(summary.totalInvested)}</div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: "#2563eb" }}>{<Money amount={summary.totalInvested} />}</div>
               </div>
               <div style={{ textAlign: "right" }}>
                 <div style={{ fontSize: 11, color: "#9ca3af" }}>Current value</div>
-                <div style={{ fontSize: 15, fontWeight: 700, color: "#7c3aed" }}>{fmt(summary.currentValue)}</div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: "#7c3aed" }}>{<Money amount={summary.currentValue} />}</div>
               </div>
               <div style={{ textAlign: "right" }}>
                 <div style={{ fontSize: 11, color: "#9ca3af" }}>Accumulated real gain</div>
                 <div style={{ fontSize: 15, fontWeight: 700, color: "#16a34a" }}>
-                  {summary.hasRealData ? `+${fmt(summary.realAccumulatedGain)}` : "—"}
+                  {summary.hasRealData ? <>+<Money amount={summary.realAccumulatedGain} /></> : "—"}
                 </div>
               </div>
               <div style={{ textAlign: "right" }}>
