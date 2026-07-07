@@ -28,13 +28,14 @@ export async function PUT(req: NextRequest) {
         year: body.year,
       },
     },
-    update: { usdCopRate: body.usdCopRate, btcPriceUsd: body.btcPriceUsd },
+    update: { usdCopRate: body.usdCopRate, btcPriceUsd: body.btcPriceUsd, usdwBalance: body.usdwBalance ?? null },
     create: {
       day: body.day,
       month: body.month,
       year: body.year,
       usdCopRate: body.usdCopRate,
       btcPriceUsd: body.btcPriceUsd,
+      usdwBalance: body.usdwBalance ?? null,
       userId: user.id,
     },
   });

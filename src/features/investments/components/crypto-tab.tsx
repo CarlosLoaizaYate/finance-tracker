@@ -20,6 +20,7 @@ import {
 } from "@/hooks/use-finance-data";
 import EditableCell from "@/components/ui/editable-cell";
 import Money from "@/components/ui/money";
+import { formatCopInput, parse } from "@/lib/formatters";
 
 // ── Styles ────────────────────────────────────────────────────────────
 
@@ -90,35 +91,63 @@ export function computeSummary(usdwPurchases: UsdwPurchase[], btcPurchases: BtcP
   const totalUsdwSpentOnBtc = btcPurchases.reduce((s, p) => s + p.usdwAmount, 0);
   const totalBtcBought = btcPurchases.reduce((s, p) => s + p.btcAmount, 0);
 
-  const usdwHeld = totalUsdwBought - totalUsdwSpentOnBtc;
+  // USDW units actually bought and not yet converted to BTC (the "cost basis" units — what you paid for).
+  const usdwHeldDerived = totalUsdwBought - totalUsdwSpentOnBtc;
   // Weighted-average COP/USD rate actually paid (includes commission, since copAmount is total paid)
   const weightedUsdRate = totalUsdwBought > 0 ? totalCopSpentOnUsdw / totalUsdwBought : 0;
 
   const sortedSnaps = [...snapshots].sort(compareSnapshots);
   const latestSnapshot = sortedSnaps.at(-1) ?? null;
 
+  // If you've manually recorded your actual USDW balance (e.g. to reflect interest earned),
+  // use that for valuation instead of the purchases-derived figure.
+  const usdwHeld = latestSnapshot?.usdwBalance ?? usdwHeldDerived;
+  const hasUsdwBalanceOverride = latestSnapshot?.usdwBalance != null;
+
   const usdCopRateNow = latestSnapshot?.usdCopRate ?? weightedUsdRate;
   const usdGrowthPct = weightedUsdRate > 0 ? ((usdCopRateNow / weightedUsdRate) - 1) * 100 : 0;
   const usdValueCop = usdwHeld * usdCopRateNow;
+
+  // Gain in USD: dollars earned as interest (1 USDW ≈ 1 USD by design) — excludes any peso effect.
+  const usdwGainUsd = usdwHeld - usdwHeldDerived;
+  // Gain in COP: your *real* peso profit — current value at the latest registered rate minus what
+  // you actually paid in pesos for the units you hold. This also captures the peso's own
+  // appreciation/depreciation against the dollar, which is why it isn't just usdwGainUsd × rate.
+  const usdwCostBasisCop = usdwHeldDerived * weightedUsdRate;
+  const usdwGainCop = usdValueCop - usdwCostBasisCop;
 
   const btcPriceUsdNow = latestSnapshot?.btcPriceUsd
     ?? (totalBtcBought > 0 ? totalUsdwSpentOnBtc / totalBtcBought : 0);
   const btcValueUsd = totalBtcBought * btcPriceUsdNow;
   const btcGrowthPct = totalUsdwSpentOnBtc > 0 ? ((btcValueUsd / totalUsdwSpentOnBtc) - 1) * 100 : 0;
   const btcValueCop = btcValueUsd * usdCopRateNow;
+  // Gain in USD: BTC price appreciation at the latest registered price, vs. the USDW you spent.
+  const btcGainUsd = btcValueUsd - totalUsdwSpentOnBtc;
+  // Gain in COP: real peso profit — current value at the latest rate minus the peso cost of the
+  // USDW you spent (at the rate you originally paid for it).
+  const btcCostBasisCop = totalUsdwSpentOnBtc * weightedUsdRate;
+  const btcGainCop = btcValueCop - btcCostBasisCop;
 
   return {
     usdwHeld,
+    usdwHeldDerived,
+    hasUsdwBalanceOverride,
+    usdwCostBasisCop,
+    usdwGainUsd,
+    usdwGainCop,
     weightedUsdRate,
     usdCopRateNow,
     usdGrowthPct,
     usdValueCop,
     btcHeld: totalBtcBought,
     btcCostUsdw: totalUsdwSpentOnBtc,
+    btcCostBasisCop,
     btcPriceUsdNow,
     btcValueUsd,
     btcValueCop,
     btcGrowthPct,
+    btcGainUsd,
+    btcGainCop,
     latestSnapshot,
   };
 }
@@ -143,7 +172,7 @@ export function computeCryptoValueAtMonth(
   const invested = relevantUsdw.reduce((s, p) => s + p.copAmount, 0);
   const totalUsdwBought = relevantUsdw.reduce((s, p) => s + p.usdwAmount, 0);
   const totalUsdwSpentOnBtc = relevantBtc.reduce((s, p) => s + p.usdwAmount, 0);
-  const usdwHeld = totalUsdwBought - totalUsdwSpentOnBtc;
+  const usdwHeldDerived = totalUsdwBought - totalUsdwSpentOnBtc;
   const btcHeld = relevantBtc.reduce((s, p) => s + p.btcAmount, 0);
   const rate = totalUsdwBought > 0 ? invested / totalUsdwBought : 0;
 
@@ -151,6 +180,7 @@ export function computeCryptoValueAtMonth(
     .filter(s => s.year * 12 + (s.month - 1) <= monthAbs)
     .sort(compareSnapshots);
   const latest = relevantSnaps.at(-1) ?? null;
+  const usdwHeld = latest?.usdwBalance ?? usdwHeldDerived;
 
   const usdwValue = latest ? usdwHeld * latest.usdCopRate : usdwHeld * rate;
   const btcValue = latest ? btcHeld * latest.btcPriceUsd * latest.usdCopRate : totalUsdwSpentOnBtc * rate;
@@ -234,26 +264,66 @@ export default function CryptoTab() {
       {/* Summary cards */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
         <div style={card}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: "#374151", marginBottom: 12 }}>USDW (dólares virtuales)</div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "#374151", marginBottom: 12 }}>
+            USDW (dólares virtuales)
+            {summary.hasUsdwBalanceOverride && (
+              <span style={{ fontSize: 11, fontWeight: 400, color: "#9ca3af", marginLeft: 6 }}>· balance ingresado manualmente</span>
+            )}
+          </div>
           <StatRow label="Held" value={<Money amount={summary.usdwHeld} currency="USDW" />} />
+          <StatRow label="Invested" value={<Money amount={summary.usdwCostBasisCop} />} />
           <StatRow label="Value in COP" value={<Money amount={summary.usdValueCop} />} valueColor="#059669" />
           <StatRow label="Avg. buy rate (per USD)" value={summary.weightedUsdRate > 0 ? <Money amount={summary.weightedUsdRate} /> : "—"} />
+
+          <SectionLabel>Performance</SectionLabel>
           <StatRow
             label="Growth since purchase"
             value={summary.weightedUsdRate > 0 ? `${summary.usdGrowthPct >= 0 ? "+" : ""}${summary.usdGrowthPct.toFixed(2)}%` : "—"}
             valueColor={summary.usdGrowthPct >= 0 ? "#059669" : "#dc2626"}
           />
+          <StatRow
+            label="Gain / Loss (USD)"
+            value={summary.usdwHeldDerived > 0 || summary.hasUsdwBalanceOverride
+              ? <>{summary.usdwGainUsd >= 0 ? "+" : ""}<Money amount={summary.usdwGainUsd} currency="USDW" /></>
+              : "—"}
+            valueColor={summary.usdwGainUsd >= 0 ? "#059669" : "#dc2626"}
+          />
+          <StatRow
+            label="Gain / Loss (COP)"
+            value={summary.usdwHeldDerived > 0 || summary.hasUsdwBalanceOverride
+              ? <>{summary.usdwGainCop >= 0 ? "+" : ""}<Money amount={summary.usdwGainCop} /></>
+              : "—"}
+            valueColor={summary.usdwGainCop >= 0 ? "#059669" : "#dc2626"}
+          />
         </div>
         <div style={card}>
           <div style={{ fontSize: 13, fontWeight: 700, color: "#374151", marginBottom: 12 }}>BTC</div>
           <StatRow label="Held" value={<Money amount={summary.btcHeld} currency="BTC" />} />
+          <StatRow label="Invested (USD)" value={summary.btcCostUsdw > 0 ? <Money amount={summary.btcCostUsdw} currency="USDW" /> : "—"} />
+          <StatRow label="Invested (COP)" value={summary.btcCostUsdw > 0 ? <Money amount={summary.btcCostBasisCop} /> : "—"} />
           <StatRow label="BTC price" value={summary.btcPriceUsdNow > 0 ? <Money amount={summary.btcPriceUsdNow} currency="USD" /> : "—"} />
           <StatRow label="Value in USD" value={<Money amount={summary.btcValueUsd} currency="USD" />} valueColor="#059669" />
           <StatRow label="Value in COP" value={<Money amount={summary.btcValueCop} />} valueColor="#059669" />
+
+          <SectionLabel>Performance</SectionLabel>
           <StatRow
             label="Growth since purchase"
             value={summary.btcCostUsdw > 0 ? `${summary.btcGrowthPct >= 0 ? "+" : ""}${summary.btcGrowthPct.toFixed(2)}%` : "—"}
             valueColor={summary.btcGrowthPct >= 0 ? "#059669" : "#dc2626"}
+          />
+          <StatRow
+            label="Gain / Loss (USD)"
+            value={summary.btcCostUsdw > 0
+              ? <>{summary.btcGainUsd >= 0 ? "+" : ""}<Money amount={summary.btcGainUsd} currency="USD" /></>
+              : "—"}
+            valueColor={summary.btcGainUsd >= 0 ? "#059669" : "#dc2626"}
+          />
+          <StatRow
+            label="Gain / Loss (COP)"
+            value={summary.btcCostUsdw > 0
+              ? <>{summary.btcGainCop >= 0 ? "+" : ""}<Money amount={summary.btcGainCop} /></>
+              : "—"}
+            valueColor={summary.btcGainCop >= 0 ? "#059669" : "#dc2626"}
           />
         </div>
       </div>
@@ -285,7 +355,7 @@ export default function CryptoTab() {
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
               <thead>
                 <tr>
-                  {["Date", "USD/COP", "BTC (USD)", ""].map(h => (
+                  {["Date", "USD/COP", "BTC (USD)", "USDW balance", ""].map(h => (
                     <th key={h} style={{ padding: "6px 10px", textAlign: "left", fontSize: 11, color: "#9ca3af", fontWeight: 600 }}>{h}</th>
                   ))}
                 </tr>
@@ -296,6 +366,7 @@ export default function CryptoTab() {
                     <td style={{ padding: "7px 10px" }}>{fmtDate(`${s.year}-${String(s.month).padStart(2, "0")}-${String(s.day).padStart(2, "0")}`)}</td>
                     <td style={{ padding: "7px 10px" }}>{<Money amount={s.usdCopRate} />}</td>
                     <td style={{ padding: "7px 10px" }}>{<Money amount={s.btcPriceUsd} currency="USD" />}</td>
+                    <td style={{ padding: "7px 10px", color: "#6b7280" }}>{s.usdwBalance != null ? <Money amount={s.usdwBalance} currency="USDW" /> : "—"}</td>
                     <td style={{ padding: "7px 10px", textAlign: "right" }}>
                       <button
                         onClick={() => deleteSnapMut.mutate({ day: s.day, month: s.month, year: s.year })}
@@ -421,6 +492,18 @@ function StatRow({ label: l, value, valueColor }: { label: string; value: React.
   );
 }
 
+/** Small uppercase divider used to group related StatRows within a card. */
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{
+      fontSize: 10, fontWeight: 700, color: "#9ca3af", letterSpacing: "0.04em", textTransform: "uppercase",
+      marginTop: 10, marginBottom: 4, paddingTop: 8, borderTop: "1px solid #f3f4f6",
+    }}>
+      {children}
+    </div>
+  );
+}
+
 /** Click-to-edit percentage (stored internally as a decimal rate, e.g. 0.001 = 0.10%). */
 function PercentEditableCell({ value, onChange }: { value: number; onChange: (v: number) => void }) {
   const [editing, setEditing] = useState(false);
@@ -470,23 +553,6 @@ function PercentEditableCell({ value, onChange }: { value: number; onChange: (v:
 
 // ── Forms ─────────────────────────────────────────────────────────────
 
-/** Formats a COP amount input allowing decimals: "." as thousands separator, "," as decimal separator. */
-function formatCopDecimalInput(raw: string): string {
-  const cleaned = raw.replace(/[^\d,]/g, "");
-  const commaIdx = cleaned.indexOf(",");
-  if (commaIdx === -1) {
-    return cleaned.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
-  }
-  const intPart = cleaned.slice(0, commaIdx).replace(/\B(?=(\d{3})+(?!\d))/g, ".");
-  const decPart = cleaned.slice(commaIdx + 1).replace(/,/g, "").slice(0, 2);
-  return `${intPart},${decPart}`;
-}
-
-function parseCopDecimalInput(formatted: string): number {
-  const n = Number(formatted.replace(/\./g, "").replace(",", "."));
-  return isNaN(n) ? 0 : n;
-}
-
 function UsdwPurchaseForm({ onSave, onCancel, loading, commissionRate }: {
   onSave: (data: { date: string; copAmount: number; commissionCop: number; usdwAmount: number; notes?: string }) => void;
   onCancel: () => void;
@@ -501,18 +567,18 @@ function UsdwPurchaseForm({ onSave, onCancel, loading, commissionRate }: {
   const [notes, setNotes] = useState("");
 
   function handleCopAmountChange(raw: string) {
-    const formatted = formatCopDecimalInput(raw);
+    const formatted = formatCopInput(raw);
     setCopAmount(formatted);
     if (!commissionTouched) {
-      const cop = parseCopDecimalInput(formatted);
-      const defaultComm = Math.round(cop * commissionRate);
-      setCommissionCop(defaultComm > 0 ? String(defaultComm).replace(/\B(?=(\d{3})+(?!\d))/g, ".") : "0");
+      const cop = parse(formatted);
+      const defaultComm = Math.round(cop * commissionRate * 100) / 100;
+      setCommissionCop(defaultComm > 0 ? formatCopInput(String(defaultComm).replace(".", ",")) : "0");
     }
   }
 
   function handleSubmit() {
-    const cop = parseCopDecimalInput(copAmount);
-    const comm = Number(commissionCop.replace(/\D/g, "")) || 0;
+    const cop = parse(copAmount);
+    const comm = parse(commissionCop);
     const usdw = Number(usdwAmount);
     if (!date || !cop || !usdw) return;
     onSave({ date, copAmount: cop, commissionCop: comm, usdwAmount: usdw, notes });
@@ -535,7 +601,7 @@ function UsdwPurchaseForm({ onSave, onCancel, loading, commissionRate }: {
           <input style={input} placeholder="0" value={commissionCop}
             onChange={e => {
               setCommissionTouched(true);
-              setCommissionCop(e.target.value.replace(/\D/g, "").replace(/\B(?=(\d{3})+(?!\d))/g, "."));
+              setCommissionCop(formatCopInput(e.target.value));
             }} />
         </div>
         <div>
@@ -679,37 +745,43 @@ function BtcPurchaseForm({ onSave, onCancel, loading, commissionRate, availableU
 }
 
 function SnapshotForm({ onSave, onCancel, loading }: {
-  onSave: (data: { day: number; month: number; year: number; usdCopRate: number; btcPriceUsd: number }) => void;
+  onSave: (data: { day: number; month: number; year: number; usdCopRate: number; btcPriceUsd: number; usdwBalance?: number }) => void;
   onCancel: () => void;
   loading: boolean;
 }) {
   const [date, setDate] = useState(todayInput());
   const [usdCopRate, setUsdCopRate] = useState("");
   const [btcPriceUsd, setBtcPriceUsd] = useState("");
+  const [usdwBalance, setUsdwBalance] = useState("");
 
   function handleSubmit() {
-    const rate = Number(usdCopRate.replace(/\D/g, ""));
+    const rate = parse(usdCopRate);
     const btcPrice = Number(btcPriceUsd);
     if (!date || !rate || !btcPrice) return;
     const [y, m, d] = date.split("-").map(Number);
-    onSave({ day: d, month: m, year: y, usdCopRate: rate, btcPriceUsd: btcPrice });
+    const balance = usdwBalance.trim() ? Number(usdwBalance) : undefined;
+    onSave({ day: d, month: m, year: y, usdCopRate: rate, btcPriceUsd: btcPrice, usdwBalance: balance });
   }
 
   return (
     <div style={{ borderTop: "1px solid #e5e7eb", paddingTop: 12 }}>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 12 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 12, marginBottom: 12 }}>
         <div>
           <span style={label}>Date</span>
           <input style={input} type="date" value={date} onChange={e => setDate(e.target.value)} />
         </div>
         <div>
           <span style={label}>USD/COP rate</span>
-          <input style={input} placeholder="4.100" value={usdCopRate}
-            onChange={e => setUsdCopRate(e.target.value.replace(/\D/g, "").replace(/\B(?=(\d{3})+(?!\d))/g, "."))} />
+          <input style={input} placeholder="4.100,50" value={usdCopRate}
+            onChange={e => setUsdCopRate(formatCopInput(e.target.value))} />
         </div>
         <div>
           <span style={label}>BTC price (USD)</span>
           <input style={input} type="number" step="any" placeholder="65000" value={btcPriceUsd} onChange={e => setBtcPriceUsd(e.target.value)} />
+        </div>
+        <div>
+          <span style={label}>USDW balance <span style={{ color: "#9ca3af" }}>· optional, for interest earned</span></span>
+          <input style={input} type="number" step="any" placeholder="e.g. 121.35" value={usdwBalance} onChange={e => setUsdwBalance(e.target.value)} />
         </div>
       </div>
       <div style={{ display: "flex", gap: 8 }}>

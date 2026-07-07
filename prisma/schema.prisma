@@ -11,7 +11,7 @@ model User {
   email               String               @unique
   name                String?
   createdAt           DateTime             @default(now())
-  cryptoSellCommission Int                 @default(0)
+  cryptoSellCommission Float               @default(0)
   cryptoCommissionRate Float               @default(0.001)
   categories          Category[]
   expenseItems        ExpenseItem[]
@@ -246,7 +246,7 @@ model UsdwPurchase {
   id            String   @id @default(uuid())
   date          DateTime
   copAmount     Float    // total COP paid for this purchase (includes commission)
-  commissionCop Int      @default(0)
+  commissionCop Float    @default(0)
   usdwAmount    Float    // USDW actually received
   notes         String   @default("")
   createdAt     DateTime @default(now())
@@ -274,6 +274,7 @@ model CryptoSnapshot {
   year        Int
   usdCopRate  Float    // COP per 1 USD
   btcPriceUsd Float    // USD per 1 BTC
+  usdwBalance Float?   // actual USDW balance on this date, if you want to track interest earned beyond purchases/exchanges
   createdAt   DateTime @default(now())
   userId      String
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)

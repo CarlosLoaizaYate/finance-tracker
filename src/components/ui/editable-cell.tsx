@@ -15,7 +15,7 @@ export default function EditableCell({ value, onChange, edited }: EditableCellPr
   const inputRef = useRef<HTMLInputElement>(null);
 
   const start = () => {
-    setText(value > 0 ? String(value) : "");
+    setText(value > 0 ? String(value).replace(".", ",") : "");
     setEditing(true);
     setTimeout(() => inputRef.current?.select(), 0);
   };

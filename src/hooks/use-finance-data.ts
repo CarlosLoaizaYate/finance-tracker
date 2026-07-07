@@ -713,6 +713,7 @@ export interface CryptoSnapshot {
   year: number;
   usdCopRate: number;
   btcPriceUsd: number;
+  usdwBalance: number | null;
   createdAt: string;
 }
 
@@ -780,7 +781,7 @@ export function useCryptoSnapshots() {
 export function useUpsertCryptoSnapshot() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: { day: number; month: number; year: number; usdCopRate: number; btcPriceUsd: number }) =>
+    mutationFn: (data: { day: number; month: number; year: number; usdCopRate: number; btcPriceUsd: number; usdwBalance?: number | null }) =>
       put("/api/crypto-snapshots", data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["crypto-snapshots"] }),
   });
