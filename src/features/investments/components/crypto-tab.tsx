@@ -160,8 +160,9 @@ export function computeSummary(usdwPurchases: UsdwPurchase[], btcPurchases: BtcP
   // usdwGainUsd × rate.
   const usdwGainCop = usdValueCop - usdwCostBasisCop;
 
-  const btcPriceUsdNow = latestSnapshot?.btcPriceUsd
-    ?? (totalBtcBought > 0 ? totalUsdwSpentOnBtc / totalBtcBought : 0);
+  // Average price you actually paid per BTC (in USDW), so you can compare it to the current price.
+  const avgBtcBuyPriceUsdw = totalBtcBought > 0 ? totalUsdwSpentOnBtc / totalBtcBought : 0;
+  const btcPriceUsdNow = latestSnapshot?.btcPriceUsd ?? avgBtcBuyPriceUsdw;
   const btcValueUsd = totalBtcBought * btcPriceUsdNow;
   const btcGrowthPct = totalUsdwSpentOnBtc > 0 ? ((btcValueUsd / totalUsdwSpentOnBtc) - 1) * 100 : 0;
   const btcValueCop = btcValueUsd * usdCopRateNow;
@@ -186,6 +187,7 @@ export function computeSummary(usdwPurchases: UsdwPurchase[], btcPurchases: BtcP
     btcHeld: totalBtcBought,
     btcCostUsdw: totalUsdwSpentOnBtc,
     btcCostBasisCop,
+    avgBtcBuyPriceUsdw,
     btcPriceUsdNow,
     btcValueUsd,
     btcValueCop,
@@ -345,6 +347,7 @@ export default function CryptoTab() {
           <StatRow label="Held" value={<Money amount={summary.btcHeld} currency="BTC" />} />
           <StatRow label="Invested (USD)" value={summary.btcCostUsdw > 0 ? <Money amount={summary.btcCostUsdw} currency="USDW" /> : "—"} />
           <StatRow label="Invested (COP)" value={summary.btcCostUsdw > 0 ? <Money amount={summary.btcCostBasisCop} /> : "—"} />
+          <StatRow label="Avg. buy price (per BTC)" value={summary.avgBtcBuyPriceUsdw > 0 ? <Money amount={summary.avgBtcBuyPriceUsdw} currency="USDW" /> : "—"} />
           <StatRow label="BTC price" value={summary.btcPriceUsdNow > 0 ? <Money amount={summary.btcPriceUsdNow} currency="USD" /> : "—"} />
           <StatRow label="Value in USD" value={<Money amount={summary.btcValueUsd} currency="USD" />} valueColor="#059669" />
           <StatRow label="Value in COP" value={<Money amount={summary.btcValueCop} />} valueColor="#059669" />
