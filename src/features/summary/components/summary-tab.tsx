@@ -29,8 +29,10 @@ import Kpi from "@/components/ui/kpi";
 import Badge from "@/components/ui/badge";
 import Money from "@/components/ui/money";
 import { computeSummary as computeCryptoSummary, effectiveSellCommission } from "@/features/investments/components/crypto-tab";
+import { useTranslation } from "@/hooks/use-translation";
 
 export default function SummaryTab() {
+  const { t } = useTranslation();
   const { year, monthFrom, monthTo, setMonthFrom, setMonthTo } = useDashboardStore();
 
   const { data: dbItems = [] } = useExpenseItems();
@@ -117,21 +119,21 @@ export default function SummaryTab() {
       <div style={{ background: "#fff", borderRadius: 12, padding: "12px 18px", marginBottom: 16, boxShadow: "0 1px 4px #0001",
         display: "flex", gap: 16, flexWrap: "wrap", alignItems: "center" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <label style={{ fontSize: 13, fontWeight: 600, color: "#374151" }}>From:</label>
+          <label style={{ fontSize: 13, fontWeight: 600, color: "#374151" }}>{t("summary.from")}</label>
           <select value={monthFrom} onChange={(e) => setMonthFrom(Math.min(+e.target.value, monthTo))}
             style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 13 }}>
             {MONTHS.map((m, i) => <option key={i} value={i}>{m}</option>)}
           </select>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <label style={{ fontSize: 13, fontWeight: 600, color: "#374151" }}>To:</label>
+          <label style={{ fontSize: 13, fontWeight: 600, color: "#374151" }}>{t("summary.to")}</label>
           <select value={monthTo} onChange={(e) => setMonthTo(Math.max(+e.target.value, monthFrom))}
             style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 13 }}>
             {MONTHS.map((m, i) => <option key={i} value={i}>{m}</option>)}
           </select>
         </div>
         <div style={{ marginLeft: "auto", fontSize: 12, color: "#9ca3af" }}>
-          {range.length} month{range.length !== 1 ? "s" : ""} selected
+          {t(range.length === 1 ? "summary.monthSelectedOne" : "summary.monthSelectedOther", { count: range.length })}
         </div>
       </div>
 
@@ -141,7 +143,7 @@ export default function SummaryTab() {
         alignItems: "center" }}>
         {incomeSources.length === 0 ? (
           <span style={{ fontSize: 13, opacity: 0.8 }}>
-            No income sources configured — add them in Settings.
+            {t("summary.noIncomeSources")}
           </span>
         ) : (
           <>
@@ -154,7 +156,7 @@ export default function SummaryTab() {
               </div>
             ))}
             <div style={{ borderLeft: "1px solid rgba(255,255,255,0.3)", paddingLeft: 20 }}>
-              <div style={{ fontSize: 11, opacity: 0.8 }}>Total Monthly Income</div>
+              <div style={{ fontSize: 11, opacity: 0.8 }}>{t("summary.totalMonthlyIncome")}</div>
               <div style={{ fontSize: 20, fontWeight: 800 }}>{<Money amount={currentIncomeTotal} />}</div>
             </div>
           </>
@@ -163,18 +165,18 @@ export default function SummaryTab() {
 
       {/* KPIs */}
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 16 }}>
-        <Kpi title="Total Income" value={<Money amount={totals.ingresos} />} color="#6366f1" />
-        <Kpi title="Total Expenses" value={<Money amount={totals.gastos} />} color="#ef4444" />
-        <Kpi title="Available" value={<Money amount={totals.libre} />} color={totals.libre >= 0 ? "#10b981" : "#ef4444"}
+        <Kpi title={t("summary.totalIncome")} value={<Money amount={totals.ingresos} />} color="#6366f1" />
+        <Kpi title={t("summary.totalExpenses")} value={<Money amount={totals.gastos} />} color="#ef4444" />
+        <Kpi title={t("summary.available")} value={<Money amount={totals.libre} />} color={totals.libre >= 0 ? "#10b981" : "#ef4444"}
           tag={totals.libre >= 0
-            ? { bg: "#d1fae5", fg: "#065f46", text: "Positive" }
-            : { bg: "#fee2e2", fg: "#991b1b", text: "Deficit" }} />
+            ? { bg: "#d1fae5", fg: "#065f46", text: t("summary.positive") }
+            : { bg: "#fee2e2", fg: "#991b1b", text: t("summary.deficit") }} />
       </div>
 
       {/* Charts */}
       <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 16 }}>
         <div style={{ flex: 2, minWidth: 320, background: "#fff", borderRadius: 12, padding: 16, boxShadow: "0 1px 4px #0001" }}>
-          <h3 style={{ margin: "0 0 12px", fontSize: 14, fontWeight: 700 }}>Monthly Summary</h3>
+          <h3 style={{ margin: "0 0 12px", fontSize: 14, fontWeight: 700 }}>{t("summary.monthlySummary")}</h3>
           <ResponsiveContainer width="100%" height={260}>
             <ComposedChart data={rangeData}>
               <CartesianGrid strokeDasharray="3 3" />
@@ -182,14 +184,14 @@ export default function SummaryTab() {
               <YAxis tick={{ fontSize: 10 }} tickFormatter={(v) => `${(v / 1e6).toFixed(1)}M`} />
               <Tooltip formatter={(v: any) => fmt(Number(v))} />
               <Legend wrapperStyle={{ fontSize: 11 }} />
-              <Area type="monotone" dataKey="ingresos" name="Income" fill="#c7d2fe" stroke="#6366f1" />
-              <Bar dataKey="gastos" name="Expenses" fill="#f87171" radius={[4, 4, 0, 0]} />
-              <Line type="monotone" dataKey="libre" name="Available" stroke="#10b981" strokeWidth={2} dot={{ r: 3 }} />
+              <Area type="monotone" dataKey="ingresos" name={t("summary.income")} fill="#c7d2fe" stroke="#6366f1" />
+              <Bar dataKey="gastos" name={t("summary.expenses")} fill="#f87171" radius={[4, 4, 0, 0]} />
+              <Line type="monotone" dataKey="libre" name={t("summary.available")} stroke="#10b981" strokeWidth={2} dot={{ r: 3 }} />
             </ComposedChart>
           </ResponsiveContainer>
         </div>
         <div style={{ flex: 1, minWidth: 260, background: "#fff", borderRadius: 12, padding: 16, boxShadow: "0 1px 4px #0001" }}>
-          <h3 style={{ margin: "0 0 8px", fontSize: 14, fontWeight: 700 }}>By Category</h3>
+          <h3 style={{ margin: "0 0 8px", fontSize: 14, fontWeight: 700 }}>{t("summary.byCategory")}</h3>
           <ResponsiveContainer width="100%" height={220}>
             <PieChart>
               <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%"
@@ -222,6 +224,7 @@ export default function SummaryTab() {
 const CDT_COLORS = ["#0891b2", "#059669", "#7c3aed", "#d97706", "#dc2626", "#2563eb", "#db2777"];
 
 function InvestmentsSummarySection() {
+  const { t } = useTranslation();
   const { data: dbStocks = [] } = useStocks();
   const { data: allTxs = [] } = useStockTransactions();
   const { data: allPriceSnaps = [] } = useStockPriceSnapshots();
@@ -341,10 +344,10 @@ function InvestmentsSummarySection() {
   if (!hasStocks && !hasFunds && !hasCdts && !hasCrypto) return null;
 
   const rows: { label: string; color: string; invested: number; current: number | null; sellComm?: number }[] = [];
-  if (hasStocks) rows.push({ label: "Stocks", color: "#6366f1", invested: stocksInvested, current: stocksCurrentValue, sellComm: stocksSellCommission });
-  if (hasFunds)  rows.push({ label: "Funds",  color: "#0891b2", invested: fundsInvested,  current: fundsCurrentValue });
-  if (hasCdts)   rows.push({ label: "CDTs",   color: "#059669", invested: cdtsInvested,   current: cdtsCurrentValue });
-  if (hasCrypto) rows.push({ label: "Crypto", color: "#f59e0b", invested: cryptoInvested, current: cryptoCurrentValue, sellComm: cryptoSellCommission });
+  if (hasStocks) rows.push({ label: t("summary.stocks"), color: "#6366f1", invested: stocksInvested, current: stocksCurrentValue, sellComm: stocksSellCommission });
+  if (hasFunds)  rows.push({ label: t("summary.funds"),  color: "#0891b2", invested: fundsInvested,  current: fundsCurrentValue });
+  if (hasCdts)   rows.push({ label: t("summary.cdts"),   color: "#059669", invested: cdtsInvested,   current: cdtsCurrentValue });
+  if (hasCrypto) rows.push({ label: t("summary.crypto"), color: "#f59e0b", invested: cryptoInvested, current: cryptoCurrentValue, sellComm: cryptoSellCommission });
 
   const totalCurrent = rows.every(r => r.current !== null)
     ? rows.reduce((s, r) => s + (r.current ?? 0), 0)
@@ -359,19 +362,19 @@ function InvestmentsSummarySection() {
   return (
     <div style={{ background: "#fff", borderRadius: 12, padding: 16, boxShadow: "0 1px 4px #0001", marginBottom: 16 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
-        <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700 }}>Investments</h3>
+        <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700 }}>{t("summary.investments")}</h3>
         <div style={{ display: "flex", gap: 20, fontSize: 12, flexWrap: "wrap" }}>
           <span style={{ color: "#6b7280" }}>
-            Invested: <strong style={{ color: "#6366f1" }}>{<Money amount={totalInvested} />}</strong>
+            {t("summary.invested")}: <strong style={{ color: "#6366f1" }}>{<Money amount={totalInvested} />}</strong>
           </span>
           {totalCurrent !== null && (
             <span style={{ color: "#6b7280" }}>
-              Current: <strong style={{ color: "#059669" }}>{<Money amount={totalCurrent} />}</strong>
+              {t("summary.current")}: <strong style={{ color: "#059669" }}>{<Money amount={totalCurrent} />}</strong>
             </span>
           )}
           {totalGain !== null && totalGainPct !== null && (
             <span style={{ color: "#6b7280" }}>
-              Gain:{" "}
+              {t("summary.gain")}:{" "}
               <strong style={{ color: totalGain >= 0 ? "#059669" : "#dc2626" }}>
                 {totalGain >= 0 ? "+" : ""}{<Money amount={totalGain} />} ({totalGainPct >= 0 ? "+" : ""}{totalGainPct.toFixed(2)}%)
               </strong>
@@ -379,7 +382,7 @@ function InvestmentsSummarySection() {
           )}
           {totalNet !== null && totalNetPct !== null && (
             <span style={{ color: "#6b7280" }}>
-              Net if sold:{" "}
+              {t("summary.netIfSold")}:{" "}
               <strong style={{ color: totalNet >= 0 ? "#059669" : "#dc2626" }}>
                 {totalNet >= 0 ? "+" : ""}{<Money amount={totalNet} />} ({totalNetPct >= 0 ? "+" : ""}{totalNetPct.toFixed(2)}%)
               </strong>
@@ -403,17 +406,17 @@ function InvestmentsSummarySection() {
             }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: row.color, marginBottom: 6 }}>{row.label}</div>
               <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 2 }}>
-                Invested: <strong style={{ color: "#374151" }}>{<Money amount={row.invested} />}</strong>
+                {t("summary.invested")}: <strong style={{ color: "#374151" }}>{<Money amount={row.invested} />}</strong>
               </div>
               <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 2 }}>
-                Current:{" "}
+                {t("summary.current")}:{" "}
                 <strong style={{ color: row.current !== null ? "#059669" : "#9ca3af" }}>
                   {row.current !== null ? <Money amount={row.current} /> : "—"}
                 </strong>
               </div>
               {gain !== null && gainPct !== null && (
                 <div style={{ fontSize: 11, marginTop: 4, color: "#6b7280" }}>
-                  Gain:{" "}
+                  {t("summary.gain")}:{" "}
                   <strong style={{ color: gain >= 0 ? "#059669" : "#dc2626" }}>
                     {gain >= 0 ? "+" : ""}{<Money amount={gain} />} ({gainPct >= 0 ? "+" : ""}{gainPct.toFixed(2)}%)
                   </strong>
@@ -421,7 +424,7 @@ function InvestmentsSummarySection() {
               )}
               {net !== null && netPct !== null && (
                 <div style={{ fontSize: 11, marginTop: 2, color: "#6b7280" }}>
-                  Net if sold:{" "}
+                  {t("summary.netIfSold")}:{" "}
                   <strong style={{ color: net >= 0 ? "#059669" : "#dc2626" }}>
                     {net >= 0 ? "+" : ""}{<Money amount={net} />} ({netPct >= 0 ? "+" : ""}{netPct.toFixed(2)}%)
                   </strong>
@@ -440,6 +443,7 @@ function InvestmentsSummarySection() {
 interface RangeRow { mes: string; ingresos: number; gastos: number; libre: number }
 
 function SavingsRateChart({ rangeData }: { rangeData: RangeRow[] }) {
+  const { t } = useTranslation();
   const data = rangeData
     .filter(d => d.ingresos > 0)
     .map(d => ({
@@ -462,7 +466,7 @@ function SavingsRateChart({ rangeData }: { rangeData: RangeRow[] }) {
       <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 8, padding: "8px 12px", fontSize: 12 }}>
         <div style={{ fontWeight: 700, marginBottom: 4 }}>{label}</div>
         <div style={{ color: v >= 0 ? "#059669" : "#dc2626", fontWeight: 600 }}>
-          {v >= 0 ? "+" : ""}{v}% saved
+          {v >= 0 ? "+" : ""}{v}{t("summary.percentSaved")}
         </div>
       </div>
     );
@@ -470,7 +474,7 @@ function SavingsRateChart({ rangeData }: { rangeData: RangeRow[] }) {
 
   return (
     <div style={{ background: "#fff", borderRadius: 12, padding: 16, boxShadow: "0 1px 4px #0001", marginBottom: 16 }}>
-      <h3 style={{ margin: "0 0 12px", fontSize: 14, fontWeight: 700 }}>Monthly Savings Rate</h3>
+      <h3 style={{ margin: "0 0 12px", fontSize: 14, fontWeight: 700 }}>{t("summary.monthlySavingsRate")}</h3>
       <ResponsiveContainer width="100%" height={200}>
         <ComposedChart data={data}>
           <CartesianGrid strokeDasharray="3 3" vertical={false} />
@@ -493,6 +497,7 @@ function SavingsRateChart({ rangeData }: { rangeData: RangeRow[] }) {
 // ── Investment Distribution + Gain Charts ─────────────────────────────
 
 function InvestmentChartsSection() {
+  const { t, language } = useTranslation();
   const { data: dbStocks = [] } = useStocks();
   const { data: allTxs = [] } = useStockTransactions();
   const { data: allPriceSnaps = [] } = useStockPriceSnapshots();
@@ -529,7 +534,7 @@ function InvestmentChartsSection() {
         if (latest) current += latest.pricePerShare * shares;
         else { allHavePrice = false; current += cost; }
       });
-      result.push({ name: "Stocks", color: "#6366f1", invested, current: allHavePrice ? current : null });
+      result.push({ name: t("summary.stocks"), color: "#6366f1", invested, current: allHavePrice ? current : null });
     }
 
     if (funds.length > 0) {
@@ -538,7 +543,7 @@ function InvestmentChartsSection() {
         const sorted = [...f.snapshots].sort((a, b) => (b.year * 12 + b.month) - (a.year * 12 + a.month));
         return s + (sorted[0]?.currentValue ?? (f.baseCapital + f.snapshots.reduce((t, x) => t + x.contribution, 0)));
       }, 0);
-      result.push({ name: "Funds", color: "#0891b2", invested, current });
+      result.push({ name: t("summary.funds"), color: "#0891b2", invested, current });
     }
 
     if (depositGroups.length > 0) {
@@ -554,17 +559,18 @@ function InvestmentChartsSection() {
         const baseCycle = activeCycle ?? sorted.at(-1);
         current += lastSnap ? lastSnap.gain : (baseCycle?.capital ?? sorted.reduce((s, c) => s + c.capitalAdded, 0));
       });
-      result.push({ name: "CDTs", color: "#059669", invested, current });
+      result.push({ name: t("summary.cdts"), color: "#059669", invested, current });
     }
 
     if (usdwPurchases.length > 0 || btcPurchases.length > 0) {
       const invested = usdwPurchases.reduce((s, p) => s + p.copAmount, 0);
       const summary = computeCryptoSummary(usdwPurchases, btcPurchases, cryptoSnapshots);
-      result.push({ name: "Crypto", color: "#f59e0b", invested, current: summary.usdValueCop + summary.btcValueCop });
+      result.push({ name: t("summary.crypto"), color: "#f59e0b", invested, current: summary.usdValueCop + summary.btcValueCop });
     }
 
     return result;
-  }, [dbStocks, txByInv, priceSnapByInv, funds, depositGroups, usdwPurchases, btcPurchases, cryptoSnapshots]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dbStocks, txByInv, priceSnapByInv, funds, depositGroups, usdwPurchases, btcPurchases, cryptoSnapshots, language]);
 
   if (rows.length === 0) return null;
 
@@ -593,7 +599,7 @@ function InvestmentChartsSection() {
         ))}
         {gain !== null && gainPct !== null && (
           <div style={{ marginTop: 4, color: gain >= 0 ? "#059669" : "#dc2626", fontWeight: 600 }}>
-            Gain: {gain >= 0 ? "+" : ""}{<Money amount={gain} />} ({gainPct >= 0 ? "+" : ""}{gainPct.toFixed(2)}%)
+            {t("summary.gain")}: {gain >= 0 ? "+" : ""}{<Money amount={gain} />} ({gainPct >= 0 ? "+" : ""}{gainPct.toFixed(2)}%)
           </div>
         )}
       </div>
@@ -604,7 +610,7 @@ function InvestmentChartsSection() {
     <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 16 }}>
       {/* Pie: allocation */}
       <div style={{ flex: 1, minWidth: 240, background: "#fff", borderRadius: 12, padding: 16, boxShadow: "0 1px 4px #0001" }}>
-        <h3 style={{ margin: "0 0 8px", fontSize: 14, fontWeight: 700 }}>Portfolio Allocation</h3>
+        <h3 style={{ margin: "0 0 8px", fontSize: 14, fontWeight: 700 }}>{t("summary.portfolioAllocation")}</h3>
         <ResponsiveContainer width="100%" height={200}>
           <PieChart>
             <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%"
@@ -628,7 +634,7 @@ function InvestmentChartsSection() {
 
       {/* Bar: invested vs current value */}
       <div style={{ flex: 2, minWidth: 300, background: "#fff", borderRadius: 12, padding: 16, boxShadow: "0 1px 4px #0001" }}>
-        <h3 style={{ margin: "0 0 12px", fontSize: 14, fontWeight: 700 }}>Invested vs Current Value</h3>
+        <h3 style={{ margin: "0 0 12px", fontSize: 14, fontWeight: 700 }}>{t("summary.investedVsCurrentValue")}</h3>
         <ResponsiveContainer width="100%" height={200}>
           <BarChart data={barData} barCategoryGap="30%">
             <CartesianGrid strokeDasharray="3 3" vertical={false} />
@@ -636,8 +642,8 @@ function InvestmentChartsSection() {
             <YAxis tick={{ fontSize: 10 }} tickFormatter={(v) => `${(v / 1e6).toFixed(1)}M`} />
             <Tooltip content={<GainTooltip />} />
             <Legend wrapperStyle={{ fontSize: 11 }} />
-            <Bar dataKey="Invested" fill="#c7d2fe" radius={[4, 4, 0, 0]} />
-            <Bar dataKey="Current Value" radius={[4, 4, 0, 0]}>
+            <Bar dataKey="Invested" name={t("summary.invested")} fill="#c7d2fe" radius={[4, 4, 0, 0]} />
+            <Bar dataKey="Current Value" name={t("summary.currentValue")} radius={[4, 4, 0, 0]}>
               {barData.map((d, i) => (
                 <Cell key={i} fill={d.color} />
               ))}

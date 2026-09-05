@@ -27,6 +27,7 @@ import {
 } from "@/hooks/use-finance-data";
 import { fmt } from "@/lib/formatters";
 import Money from "@/components/ui/money";
+import { useTranslation } from "@/hooks/use-translation";
 
 const now = new Date();
 const CUR_MONTH = now.getMonth(); // 0-based (0=Jan, 11=Dec)
@@ -66,6 +67,7 @@ function MonthYearPicker({
 // ── Categories section ───────────────────────────────────────────────
 
 function CategoryRow({ cat }: { cat: { id: string; name: string; color: string; items?: unknown[] } }) {
+  const { t } = useTranslation();
   const updateMut = useUpdateCategory();
   const deleteMut = useDeleteCategory();
   const [editing, setEditing] = useState(false);
@@ -84,19 +86,19 @@ function CategoryRow({ cat }: { cat: { id: string; name: string; color: string; 
         <span style={{ width: 14, height: 14, borderRadius: 4, background: cat.color, flexShrink: 0 }} />
         <span style={{ flex: 1, fontSize: 14, fontWeight: 500, color: "#111827" }}>{cat.name}</span>
         <span style={{ fontSize: 11, color: "#9ca3af" }}>
-          {itemCount} item{itemCount !== 1 ? "s" : ""}
+          {itemCount} {t("settings.itemWord")}{itemCount !== 1 ? "s" : ""}
         </span>
         <button
           onClick={() => { setEditName(cat.name); setEditColor(cat.color); setEditing(!editing); }}
           style={{ fontSize: 11, padding: "2px 8px", borderRadius: 5, border: "1px solid #6366f1",
             background: editing ? "#6366f1" : "none", color: editing ? "#fff" : "#6366f1",
             cursor: "pointer", fontWeight: 600 }}>
-          Edit
+          {t("settings.edit")}
         </button>
         <button
           onClick={() => deleteMut.mutate(cat.id)}
           disabled={deleteMut.isPending || itemCount > 0}
-          title={itemCount > 0 ? "Has associated items" : "Delete"}
+          title={itemCount > 0 ? t("settings.hasAssociatedItems") : t("settings.delete")}
           style={{ background: "none", border: "none", cursor: itemCount > 0 ? "not-allowed" : "pointer",
             color: itemCount > 0 ? "#d1d5db" : "#ef4444", fontSize: 14, padding: "0 2px" }}>
           ✕
@@ -106,12 +108,12 @@ function CategoryRow({ cat }: { cat: { id: string; name: string; color: string; 
       {editing && (
         <div style={{ padding: "0 10px 10px", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
           <div>
-            <label style={{ fontSize: 11, color: "#6b7280", display: "block" }}>Name</label>
+            <label style={{ fontSize: 11, color: "#6b7280", display: "block" }}>{t("settings.name")}</label>
             <input value={editName} onChange={(e) => setEditName(e.target.value)}
               style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 13, width: 150 }} />
           </div>
           <div>
-            <label style={{ fontSize: 11, color: "#6b7280", display: "block" }}>Color</label>
+            <label style={{ fontSize: 11, color: "#6b7280", display: "block" }}>{t("settings.color")}</label>
             <div style={{ display: "flex", gap: 4, marginTop: 2 }}>
               {COLORS.map((c) => (
                 <button key={c} onClick={() => setEditColor(c)}
@@ -123,12 +125,12 @@ function CategoryRow({ cat }: { cat: { id: string; name: string; color: string; 
           <button onClick={handleSave} disabled={updateMut.isPending || !editName.trim()}
             style={{ padding: "4px 12px", borderRadius: 6, border: "none", cursor: "pointer",
               background: "#6366f1", color: "#fff", fontWeight: 600, fontSize: 13 }}>
-            Save
+            {t("settings.save")}
           </button>
           <button onClick={() => setEditing(false)}
             style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid #d1d5db",
               background: "none", color: "#6b7280", cursor: "pointer", fontSize: 13 }}>
-            Cancel
+            {t("settings.cancel")}
           </button>
         </div>
       )}
@@ -137,6 +139,7 @@ function CategoryRow({ cat }: { cat: { id: string; name: string; color: string; 
 }
 
 function CategoriesSection() {
+  const { t } = useTranslation();
   const { data: categories = [], isLoading } = useCategories();
   const addMut = useAddCategory();
   const [showAdd, setShowAdd] = useState(false);
@@ -151,12 +154,12 @@ function CategoriesSection() {
   };
 
   return (
-    <SectionCard title="Categories">
+    <SectionCard title={t("settings.categoriesTitle")}>
       <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
         <button onClick={() => setShowAdd(!showAdd)}
           style={{ padding: "6px 14px", borderRadius: 8, border: "none", cursor: "pointer",
             background: "#10b981", color: "#fff", fontWeight: 600, fontSize: 13 }}>
-          + New category
+          {t("settings.newCategoryButton")}
         </button>
       </div>
 
@@ -165,14 +168,14 @@ function CategoriesSection() {
           display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end",
           border: "1px dashed #86efac" }}>
           <div>
-            <label style={{ fontSize: 11, color: "#6b7280", display: "block" }}>Name</label>
+            <label style={{ fontSize: 11, color: "#6b7280", display: "block" }}>{t("settings.name")}</label>
             <input value={newName} onChange={(e) => setNewName(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleAdd()}
-              placeholder="e.g. Transport"
+              placeholder={t("settings.categoryNamePlaceholder")}
               style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 13, width: 150 }} />
           </div>
           <div>
-            <label style={{ fontSize: 11, color: "#6b7280", display: "block" }}>Color</label>
+            <label style={{ fontSize: 11, color: "#6b7280", display: "block" }}>{t("settings.color")}</label>
             <div style={{ display: "flex", gap: 4, marginTop: 2 }}>
               {COLORS.map((c) => (
                 <button key={c} onClick={() => setNewColor(c)}
@@ -184,20 +187,20 @@ function CategoriesSection() {
           <button onClick={handleAdd} disabled={addMut.isPending || !newName.trim()}
             style={{ padding: "5px 14px", borderRadius: 6, border: "none", cursor: "pointer",
               background: "#10b981", color: "#fff", fontWeight: 600, fontSize: 13 }}>
-            {addMut.isPending ? "Saving..." : "Add"}
+            {addMut.isPending ? t("settings.saving") : t("settings.add")}
           </button>
           <button onClick={() => setShowAdd(false)}
             style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid #d1d5db",
               background: "none", color: "#6b7280", cursor: "pointer", fontSize: 13 }}>
-            Cancel
+            {t("settings.cancel")}
           </button>
         </div>
       )}
 
       {isLoading ? (
-        <p style={{ fontSize: 13, color: "#6b7280" }}>Loading...</p>
+        <p style={{ fontSize: 13, color: "#6b7280" }}>{t("settings.loading")}</p>
       ) : categories.length === 0 ? (
-        <p style={{ fontSize: 13, color: "#9ca3af" }}>No categories.</p>
+        <p style={{ fontSize: 13, color: "#9ca3af" }}>{t("settings.noCategories")}</p>
       ) : (
         <ul style={{ listStyle: "none", padding: 0, margin: 0, background: "#fff",
           borderRadius: 8, border: "1px solid #f3f4f6", overflow: "hidden" }}>
@@ -211,6 +214,7 @@ function CategoriesSection() {
 // ── Income Sources section ───────────────────────────────────────────
 
 function IncomeSourceRow({ source }: { source: IncomeSource }) {
+  const { t } = useTranslation();
   const deleteMut = useDeleteIncomeSource();
   const addHistory = useAddIncomeHistory();
   const [editing, setEditing] = useState(false);
@@ -236,12 +240,12 @@ function IncomeSourceRow({ source }: { source: IncomeSource }) {
         <button onClick={() => { setEditing(!editing); setShowHistory(false); }}
           style={{ fontSize: 12, padding: "3px 10px", borderRadius: 6, border: "1px solid #6366f1",
             background: "none", color: "#6366f1", cursor: "pointer", fontWeight: 600 }}>
-          Update
+          {t("settings.updateButton")}
         </button>
         <button onClick={() => { setShowHistory(!showHistory); setEditing(false); }}
           style={{ fontSize: 12, padding: "3px 10px", borderRadius: 6, border: "1px solid #d1d5db",
             background: "none", color: "#6b7280", cursor: "pointer" }}>
-          History ({source.history.length})
+          {t("settings.historyButton", { count: source.history.length })}
         </button>
         <button onClick={() => deleteMut.mutate(source.id)} disabled={deleteMut.isPending}
           style={{ background: "none", border: "none", cursor: "pointer", color: "#ef4444", fontSize: 13, fontWeight: 600 }}>
@@ -252,34 +256,34 @@ function IncomeSourceRow({ source }: { source: IncomeSource }) {
       {editing && (
         <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
           <div>
-            <label style={{ fontSize: 11, color: "#6b7280", display: "block" }}>New amount</label>
+            <label style={{ fontSize: 11, color: "#6b7280", display: "block" }}>{t("settings.newAmountLabel")}</label>
             <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)}
               placeholder={fmt(current)}
               style={{ width: 130, padding: "5px 8px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 13 }} />
           </div>
           <div>
-            <label style={{ fontSize: 11, color: "#6b7280", display: "block" }}>Effective from</label>
+            <label style={{ fontSize: 11, color: "#6b7280", display: "block" }}>{t("settings.effectiveFrom")}</label>
             <MonthYearPicker month={effMonth} year={effYear} onMonth={setEffMonth} onYear={setEffYear} />
           </div>
           <button onClick={handleSave} disabled={addHistory.isPending || !amount}
             style={{ marginTop: 14, padding: "5px 14px", borderRadius: 6, border: "none", cursor: "pointer",
               background: "#6366f1", color: "#fff", fontWeight: 600, fontSize: 13 }}>
-            Save
+            {t("settings.save")}
           </button>
           <button onClick={() => setEditing(false)}
             style={{ marginTop: 14, padding: "5px 10px", borderRadius: 6, border: "1px solid #d1d5db",
               background: "none", color: "#6b7280", cursor: "pointer", fontSize: 13 }}>
-            Cancel
+            {t("settings.cancel")}
           </button>
         </div>
       )}
 
       {showHistory && source.history.length > 0 && (
         <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid #e5e7eb" }}>
-          <p style={{ fontSize: 11, color: "#9ca3af", margin: "0 0 4px" }}>Amount history:</p>
+          <p style={{ fontSize: 11, color: "#9ca3af", margin: "0 0 4px" }}>{t("settings.amountHistoryLabel")}</p>
           {[...source.history].reverse().map((h) => (
             <div key={h.id} style={{ display: "flex", gap: 8, fontSize: 12, color: "#374151", marginBottom: 2 }}>
-              <span style={{ color: "#9ca3af" }}>From {MONTHS[h.effectiveMonth]} {h.effectiveYear}:</span>
+              <span style={{ color: "#9ca3af" }}>{t("settings.fromDateLabel", { month: MONTHS[h.effectiveMonth], year: h.effectiveYear })}</span>
               <span style={{ fontWeight: 600 }}>{<Money amount={h.amount} />}</span>
             </div>
           ))}
@@ -290,6 +294,7 @@ function IncomeSourceRow({ source }: { source: IncomeSource }) {
 }
 
 function IncomeSources() {
+  const { t } = useTranslation();
   const { data: sources = [], isLoading } = useIncomeSources();
   const addMut = useAddIncomeSource();
   const [showForm, setShowForm] = useState(false);
@@ -309,15 +314,15 @@ function IncomeSources() {
   const totalCurrent = sources.reduce((s, src) => s + effectiveIncomeAmount(src, CUR_MONTH, CUR_YEAR), 0);
 
   return (
-    <SectionCard title="Income">
+    <SectionCard title={t("settings.incomeTitle")}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
         <span style={{ fontSize: 13, color: "#6b7280" }}>
-          Current total: <strong style={{ color: "#10b981" }}>{<Money amount={totalCurrent} />}</strong>
+          {t("settings.currentTotalLabel")} <strong style={{ color: "#10b981" }}>{<Money amount={totalCurrent} />}</strong>
         </span>
         <button onClick={() => setShowForm(!showForm)}
           style={{ padding: "6px 14px", borderRadius: 8, border: "none", cursor: "pointer",
             background: "#6366f1", color: "#fff", fontWeight: 600, fontSize: 13 }}>
-          + New source
+          {t("settings.newSourceButton")}
         </button>
       </div>
 
@@ -325,39 +330,39 @@ function IncomeSources() {
         <div style={{ background: "#f0f9ff", borderRadius: 8, padding: 12, marginBottom: 12,
           display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
           <div>
-            <label style={{ fontSize: 11, color: "#6b7280", display: "block" }}>Name</label>
-            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ej: Salario, Arriendo"
+            <label style={{ fontSize: 11, color: "#6b7280", display: "block" }}>{t("settings.name")}</label>
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder={t("settings.sourceNamePlaceholder")}
               style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 13, width: 150 }} />
           </div>
           <div>
-            <label style={{ fontSize: 11, color: "#6b7280", display: "block" }}>Monthly amount</label>
+            <label style={{ fontSize: 11, color: "#6b7280", display: "block" }}>{t("settings.monthlyAmountLabel")}</label>
             <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)}
               style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 13, width: 130 }} />
           </div>
           <div>
-            <label style={{ fontSize: 11, color: "#6b7280", display: "block" }}>Effective from</label>
+            <label style={{ fontSize: 11, color: "#6b7280", display: "block" }}>{t("settings.effectiveFrom")}</label>
             <MonthYearPicker month={effMonth} year={effYear} onMonth={setEffMonth} onYear={setEffYear} />
           </div>
           <button onClick={handleAdd} disabled={addMut.isPending || !name.trim() || !amount}
             style={{ padding: "5px 14px", borderRadius: 6, border: "none", cursor: "pointer",
               background: "#10b981", color: "#fff", fontWeight: 600, fontSize: 13 }}>
-            Save
+            {t("settings.save")}
           </button>
           <button onClick={() => setShowForm(false)}
             style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid #d1d5db",
               background: "none", color: "#6b7280", cursor: "pointer", fontSize: 13 }}>
-            Cancel
+            {t("settings.cancel")}
           </button>
         </div>
       )}
 
       {isLoading ? (
-        <p style={{ fontSize: 13, color: "#6b7280" }}>Loading...</p>
+        <p style={{ fontSize: 13, color: "#6b7280" }}>{t("settings.loading")}</p>
       ) : (
         <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
           {sources.map((src) => <IncomeSourceRow key={src.id} source={src} />)}
           {sources.length === 0 && (
-            <li style={{ fontSize: 13, color: "#9ca3af" }}>No income sources configured.</li>
+            <li style={{ fontSize: 13, color: "#9ca3af" }}>{t("settings.noIncomeSources")}</li>
           )}
         </ul>
       )}
@@ -368,6 +373,7 @@ function IncomeSources() {
 // ── Expense Budget section ───────────────────────────────────────────
 
 function BudgetItemRow({ item, categories }: { item: ExpenseItem; categories: Category[] }) {
+  const { t } = useTranslation();
   const updateItem   = useUpdateExpenseItem();
   const removeItem   = useRemoveExpenseItem();
   const addHistory   = useAddBudgetHistory();
@@ -405,7 +411,7 @@ function BudgetItemRow({ item, categories }: { item: ExpenseItem; categories: Ca
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         {cat && <span style={{ width: 8, height: 8, borderRadius: 2, background: cat.color, flexShrink: 0 }} />}
         <span style={{ flex: 1, fontSize: 13, color: "#111827", fontWeight: 500 }}>
-          {item.name} {item.isImportant && <span style={{ fontSize: 11, color: "#f59e0b", marginLeft: 4 }}>(Día {item.defaultDay})</span>}
+          {item.name} {item.isImportant && <span style={{ fontSize: 11, color: "#f59e0b", marginLeft: 4 }}>{t("settings.dayNote", { day: item.defaultDay })}</span>}
         </span>
         <span style={{ fontSize: 12, color: "#9ca3af" }}>{cat?.name}</span>
         <span style={{ fontSize: 13, fontWeight: 700, color: "#374151", minWidth: 80, textAlign: "right" }}>
@@ -416,14 +422,14 @@ function BudgetItemRow({ item, categories }: { item: ExpenseItem; categories: Ca
           style={{ fontSize: 11, padding: "2px 8px", borderRadius: 5, border: "1px solid #6366f1",
             background: mode === "edit" ? "#6366f1" : "none", color: mode === "edit" ? "#fff" : "#6366f1",
             cursor: "pointer", fontWeight: 600 }}>
-          Editar
+          {t("settings.edit")}
         </button>
         <button
           onClick={() => setMode(mode === "budget" ? "view" : "budget")}
           style={{ fontSize: 11, padding: "2px 8px", borderRadius: 5, border: "1px solid #10b981",
             background: mode === "budget" ? "#10b981" : "none", color: mode === "budget" ? "#fff" : "#10b981",
             cursor: "pointer", fontWeight: 600 }}>
-          Budget
+          {t("settings.budgetButton")}
         </button>
         <button
           onClick={() => removeItem.mutate(item.id)}
@@ -437,12 +443,12 @@ function BudgetItemRow({ item, categories }: { item: ExpenseItem; categories: Ca
       {mode === "edit" && (
         <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
           <div>
-            <label style={{ fontSize: 11, color: "#6b7280", display: "block" }}>Name</label>
+            <label style={{ fontSize: 11, color: "#6b7280", display: "block" }}>{t("settings.name")}</label>
             <input value={editName} onChange={(e) => setEditName(e.target.value)}
               style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 13, width: 160 }} />
           </div>
           <div>
-            <label style={{ fontSize: 11, color: "#6b7280", display: "block" }}>Category</label>
+            <label style={{ fontSize: 11, color: "#6b7280", display: "block" }}>{t("settings.category")}</label>
             <select value={editCatId} onChange={(e) => setEditCatId(e.target.value)}
               style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 13 }}>
               {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -450,11 +456,11 @@ function BudgetItemRow({ item, categories }: { item: ExpenseItem; categories: Ca
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <input type="checkbox" checked={editImportant} onChange={(e) => setEditImportant(e.target.checked)} id={`chk-${item.id}`} />
-            <label htmlFor={`chk-${item.id}`} style={{ fontSize: 11, color: "#6b7280", cursor: "pointer" }}>Reminder?</label>
+            <label htmlFor={`chk-${item.id}`} style={{ fontSize: 11, color: "#6b7280", cursor: "pointer" }}>{t("settings.reminderQuestionLabel")}</label>
           </div>
           {editImportant && (
             <div>
-              <label style={{ fontSize: 11, color: "#6b7280", display: "block" }}>Día</label>
+              <label style={{ fontSize: 11, color: "#6b7280", display: "block" }}>{t("settings.dayLabel")}</label>
               <input type="number" min={1} max={31} value={editDefaultDay} onChange={(e) => setEditDefaultDay(+e.target.value)}
                 style={{ width: 50, padding: "4px 8px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 13 }} />
             </div>
@@ -462,12 +468,12 @@ function BudgetItemRow({ item, categories }: { item: ExpenseItem; categories: Ca
           <button onClick={handleSaveEdit} disabled={updateItem.isPending || !editName.trim()}
             style={{ padding: "4px 12px", borderRadius: 6, border: "none", cursor: "pointer",
               background: "#6366f1", color: "#fff", fontWeight: 600, fontSize: 13 }}>
-            Save
+            {t("settings.save")}
           </button>
           <button onClick={() => setMode("view")}
             style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid #d1d5db",
               background: "none", color: "#6b7280", cursor: "pointer", fontSize: 13 }}>
-            Cancel
+            {t("settings.cancel")}
           </button>
         </div>
       )}
@@ -476,24 +482,24 @@ function BudgetItemRow({ item, categories }: { item: ExpenseItem; categories: Ca
       {mode === "budget" && (
         <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
           <div>
-            <label style={{ fontSize: 11, color: "#6b7280", display: "block" }}>New budget</label>
+            <label style={{ fontSize: 11, color: "#6b7280", display: "block" }}>{t("settings.newBudgetLabel")}</label>
             <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)}
               placeholder={String(current)}
               style={{ width: 130, padding: "4px 8px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 13 }} />
           </div>
           <div>
-            <label style={{ fontSize: 11, color: "#6b7280", display: "block" }}>Effective from</label>
+            <label style={{ fontSize: 11, color: "#6b7280", display: "block" }}>{t("settings.effectiveFrom")}</label>
             <MonthYearPicker month={effMonth} year={effYear} onMonth={setEffMonth} onYear={setEffYear} />
           </div>
           <button onClick={handleSaveBudget} disabled={addHistory.isPending || !amount}
             style={{ padding: "4px 12px", borderRadius: 6, border: "none", cursor: "pointer",
               background: "#10b981", color: "#fff", fontWeight: 600, fontSize: 13 }}>
-            Save
+            {t("settings.save")}
           </button>
           <button onClick={() => setMode("view")}
             style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid #d1d5db",
               background: "none", color: "#6b7280", cursor: "pointer", fontSize: 13 }}>
-            Cancel
+            {t("settings.cancel")}
           </button>
         </div>
       )}
@@ -502,6 +508,7 @@ function BudgetItemRow({ item, categories }: { item: ExpenseItem; categories: Ca
 }
 
 function AddExpenseItemForm({ categories, isImportant, onDone }: { categories: Category[]; isImportant?: boolean; onDone: () => void }) {
+  const { t } = useTranslation();
   const addItem = useAddExpenseItem();
   const [name,    setName]    = useState("");
   const [catId,   setCatId]   = useState(categories[0]?.id ?? "");
@@ -520,26 +527,26 @@ function AddExpenseItemForm({ categories, isImportant, onDone }: { categories: C
       display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end",
       border: "1px dashed #86efac" }}>
       <div>
-        <label style={{ fontSize: 11, color: "#6b7280", display: "block" }}>Name</label>
-        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ej: Netflix"
+        <label style={{ fontSize: 11, color: "#6b7280", display: "block" }}>{t("settings.name")}</label>
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder={t("settings.expenseNamePlaceholder")}
           style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 13, width: 150 }} />
       </div>
       <div>
-        <label style={{ fontSize: 11, color: "#6b7280", display: "block" }}>Category</label>
+        <label style={{ fontSize: 11, color: "#6b7280", display: "block" }}>{t("settings.category")}</label>
         <select value={catId} onChange={(e) => setCatId(e.target.value)}
           style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 13 }}>
           {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
       </div>
       <div>
-        <label style={{ fontSize: 11, color: "#6b7280", display: "block" }}>Monthly budget</label>
+        <label style={{ fontSize: 11, color: "#6b7280", display: "block" }}>{t("settings.monthlyBudgetLabel")}</label>
         <input type="number" value={budget} onChange={(e) => setBudget(e.target.value)}
           placeholder="0"
           style={{ width: 130, padding: "5px 8px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 13 }} />
       </div>
       {isImportant && (
         <div>
-          <label style={{ fontSize: 11, color: "#6b7280", display: "block" }}>Payment day</label>
+          <label style={{ fontSize: 11, color: "#6b7280", display: "block" }}>{t("settings.paymentDayLabel")}</label>
           <input type="number" min={1} max={31} value={defaultDay} onChange={(e) => setDefaultDay(+e.target.value)}
             style={{ width: 60, padding: "5px 8px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 13 }} />
         </div>
@@ -547,18 +554,19 @@ function AddExpenseItemForm({ categories, isImportant, onDone }: { categories: C
       <button onClick={handleAdd} disabled={addItem.isPending || !name.trim() || !budget || !catId}
         style={{ padding: "5px 14px", borderRadius: 6, border: "none", cursor: "pointer",
           background: "#10b981", color: "#fff", fontWeight: 600, fontSize: 13 }}>
-        {addItem.isPending ? "Saving..." : "Add"}
+        {addItem.isPending ? t("settings.saving") : t("settings.add")}
       </button>
       <button onClick={onDone}
         style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid #d1d5db",
           background: "none", color: "#6b7280", cursor: "pointer", fontSize: 13 }}>
-        Cancel
+        {t("settings.cancel")}
       </button>
     </div>
   );
 }
 
 function ExpenseCategoryGroup({ catId, catItems, categories }: { catId: string; catItems: ExpenseItem[]; categories: Category[] }) {
+  const { t } = useTranslation();
   const cat = categories.find((c) => c.id === catId);
   const [open, setOpen] = useState(false);
 
@@ -577,7 +585,7 @@ function ExpenseCategoryGroup({ catId, catItems, categories }: { catId: string; 
         <span style={{ flex: 1, fontSize: 14, fontWeight: 700, color: "#111827" }}>{cat?.name ?? catId}</span>
         <span style={{ fontSize: 12, color: "#6b7280" }}>{<Money amount={total} />}</span>
         <span style={{ fontSize: 11, color: "#9ca3af", marginLeft: 8 }}>
-          {catItems.length} ítem{catItems.length !== 1 ? "s" : ""}
+          {catItems.length} {t("settings.itemWord")}{catItems.length !== 1 ? "s" : ""}
         </span>
         <span style={{ fontSize: 11, color: "#9ca3af", marginLeft: 6 }}>{open ? "▲" : "▼"}</span>
       </button>
@@ -600,7 +608,7 @@ function ExpenseCategoryGroup({ catId, catItems, categories }: { catId: string; 
                 background: "#faf5ff" }}>
                 <span style={{ fontSize: 11, fontWeight: 600, color: "#9333ea", letterSpacing: "0.04em",
                   textTransform: "uppercase" }}>
-                  Recordatorios
+                  {t("settings.remindersHeading")}
                 </span>
               </div>
               <ul style={{ listStyle: "none", padding: 0, margin: 0, background: "#faf5ff" }}>
@@ -617,6 +625,7 @@ function ExpenseCategoryGroup({ catId, catItems, categories }: { catId: string; 
 }
 
 function ExpenseBudgets() {
+  const { t } = useTranslation();
   const { data: items = [], isLoading } = useExpenseItems();
   const { data: categories = [] }       = useCategories();
   const [showAdd, setShowAdd]           = useState(false);
@@ -627,12 +636,12 @@ function ExpenseBudgets() {
   }, {});
 
   return (
-    <SectionCard title="Expense Budget">
+    <SectionCard title={t("settings.expenseBudgetTitle")}>
       <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
         <button onClick={() => setShowAdd(!showAdd)}
           style={{ padding: "6px 14px", borderRadius: 8, border: "none", cursor: "pointer",
             background: "#10b981", color: "#fff", fontWeight: 600, fontSize: 13 }}>
-          + New expense
+          {t("settings.newExpenseButton")}
         </button>
       </div>
 
@@ -641,14 +650,14 @@ function ExpenseBudgets() {
       )}
       {showAdd && categories.length === 0 && (
         <p style={{ fontSize: 12, color: "#ef4444", marginBottom: 12 }}>
-          Create at least one category first.
+          {t("settings.createCategoryFirst")}
         </p>
       )}
 
       {isLoading ? (
-        <p style={{ fontSize: 13, color: "#6b7280" }}>Loading...</p>
+        <p style={{ fontSize: 13, color: "#6b7280" }}>{t("settings.loading")}</p>
       ) : items.length === 0 ? (
-        <p style={{ fontSize: 13, color: "#9ca3af" }}>No expenses configured.</p>
+        <p style={{ fontSize: 13, color: "#9ca3af" }}>{t("settings.noExpenses")}</p>
       ) : (
         Object.entries(grouped).map(([catId, catItems]) => (
           <ExpenseCategoryGroup key={catId} catId={catId} catItems={catItems} categories={categories} />
@@ -659,6 +668,7 @@ function ExpenseBudgets() {
 }
 
 function ImportantExpensesSection() {
+  const { t } = useTranslation();
   const { data: items = [], isLoading } = useExpenseItems();
   const { data: categories = [] }       = useCategories();
   const updateItem                      = useUpdateExpenseItem();
@@ -689,16 +699,16 @@ function ImportantExpensesSection() {
   };
 
   return (
-    <SectionCard title="Important Expenses (Reminders)">
+    <SectionCard title={t("settings.importantExpensesTitle")}>
       <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
         <button
           onClick={() => { setShowAdd(!showAdd); setSelectedId(availableItems[0]?.id ?? ""); }}
           disabled={availableItems.length === 0}
-          title={availableItems.length === 0 ? "All budget items are already reminders" : undefined}
+          title={availableItems.length === 0 ? t("settings.allItemsAreReminders") : undefined}
           style={{ padding: "6px 14px", borderRadius: 8, border: "none", cursor: availableItems.length === 0 ? "not-allowed" : "pointer",
             background: availableItems.length === 0 ? "#e5e7eb" : "#6366f1",
             color: availableItems.length === 0 ? "#9ca3af" : "#fff", fontWeight: 600, fontSize: 13 }}>
-          + Add reminder
+          {t("settings.addReminderButton")}
         </button>
       </div>
 
@@ -707,7 +717,7 @@ function ImportantExpensesSection() {
           display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end",
           border: "1px dashed #a5b4fc" }}>
           <div>
-            <label style={{ fontSize: 11, color: "#6b7280", display: "block", marginBottom: 2 }}>Expense</label>
+            <label style={{ fontSize: 11, color: "#6b7280", display: "block", marginBottom: 2 }}>{t("settings.expenseLabel")}</label>
             <select
               value={selectedId}
               onChange={(e) => setSelectedId(e.target.value)}
@@ -721,7 +731,7 @@ function ImportantExpensesSection() {
             </select>
           </div>
           <div>
-            <label style={{ fontSize: 11, color: "#6b7280", display: "block", marginBottom: 2 }}>Payment day</label>
+            <label style={{ fontSize: 11, color: "#6b7280", display: "block", marginBottom: 2 }}>{t("settings.paymentDayLabel")}</label>
             <input
               type="number" min={1} max={31} value={defaultDay}
               onChange={(e) => setDefaultDay(+e.target.value)}
@@ -733,21 +743,21 @@ function ImportantExpensesSection() {
             disabled={!selectedId || updateItem.isPending}
             style={{ padding: "5px 14px", borderRadius: 6, border: "none", cursor: "pointer",
               background: "#6366f1", color: "#fff", fontWeight: 600, fontSize: 13 }}>
-            {updateItem.isPending ? "Saving..." : "Save"}
+            {updateItem.isPending ? t("settings.saving") : t("settings.save")}
           </button>
           <button
             onClick={() => setShowAdd(false)}
             style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid #d1d5db",
               background: "none", color: "#6b7280", cursor: "pointer", fontSize: 13 }}>
-            Cancel
+            {t("settings.cancel")}
           </button>
         </div>
       )}
 
       {isLoading ? (
-        <p style={{ fontSize: 13, color: "#6b7280" }}>Loading...</p>
+        <p style={{ fontSize: 13, color: "#6b7280" }}>{t("settings.loading")}</p>
       ) : importantItems.length === 0 ? (
-        <p style={{ fontSize: 13, color: "#9ca3af" }}>No reminders configured. Add one from the budget items above.</p>
+        <p style={{ fontSize: 13, color: "#9ca3af" }}>{t("settings.noReminders")}</p>
       ) : (
         Object.entries(grouped).map(([catId, catItems]) => {
           const cat = catMap[catId];
@@ -774,6 +784,7 @@ function ImportantExpensesSection() {
 // ── Investment Types section (existing) ──────────────────────────────
 
 function InvestmentTypesSection() {
+  const { t } = useTranslation();
   const { data: investmentTypes = [], isLoading } = useInvestmentTypes();
   const addMut = useAddInvestmentType();
   const removeMut = useDeleteInvestmentType();
@@ -786,9 +797,9 @@ function InvestmentTypesSection() {
   };
 
   return (
-    <SectionCard title="Investment Types">
+    <SectionCard title={t("settings.investmentTypesTitle")}>
       {isLoading ? (
-        <p style={{ fontSize: 13, color: "#6b7280" }}>Loading...</p>
+        <p style={{ fontSize: 13, color: "#6b7280" }}>{t("settings.loading")}</p>
       ) : (
         <ul style={{ listStyle: "none", padding: 0, margin: "0 0 14px" }}>
           {investmentTypes.map((type) => (
@@ -799,24 +810,24 @@ function InvestmentTypesSection() {
               <span style={{ fontSize: 14, fontWeight: 500 }}>{type.name}</span>
               <button onClick={() => removeMut.mutate(type.id)}
                 style={{ background: "none", border: "none", cursor: "pointer", color: "#ef4444", fontSize: 12, fontWeight: 600 }}>
-                Delete
+                {t("settings.delete")}
               </button>
             </li>
           ))}
           {investmentTypes.length === 0 && (
-            <li style={{ fontSize: 13, color: "#9ca3af" }}>No types configured.</li>
+            <li style={{ fontSize: 13, color: "#9ca3af" }}>{t("settings.noTypes")}</li>
           )}
         </ul>
       )}
       <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-        <input type="text" placeholder="New type (e.g. Crypto)"
+        <input type="text" placeholder={t("settings.newTypePlaceholder")}
           value={newTypeName} onChange={(e) => setNewTypeName(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && handleAdd()}
           style={{ flex: 1, padding: "7px 10px", borderRadius: 8, border: "1px solid #d1d5db", fontSize: 14 }} />
         <button onClick={handleAdd} disabled={addMut.isPending || !newTypeName.trim()}
           style={{ padding: "7px 16px", borderRadius: 8, border: "none", cursor: "pointer",
             background: "#10b981", color: "#fff", fontWeight: 600, fontSize: 14 }}>
-          {addMut.isPending ? "Saving..." : "+ Add"}
+          {addMut.isPending ? t("settings.saving") : t("settings.addTypeButton")}
         </button>
       </div>
     </SectionCard>
@@ -826,9 +837,10 @@ function InvestmentTypesSection() {
 // ── Root ─────────────────────────────────────────────────────────────
 
 export default function SettingsTab() {
+  const { t } = useTranslation();
   return (
     <div>
-      <h2 style={{ fontSize: 20, fontWeight: 700, color: "#111827", marginBottom: 16 }}>Settings</h2>
+      <h2 style={{ fontSize: 20, fontWeight: 700, color: "#111827", marginBottom: 16 }}>{t("settings.pageTitle")}</h2>
       <CategoriesSection />
       <IncomeSources />
       <ImportantExpensesSection />

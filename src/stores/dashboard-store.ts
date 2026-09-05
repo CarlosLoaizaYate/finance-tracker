@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-export type TabName = "summary" | "expenses" | "investments" | "settings";
+export type TabName = "summary" | "expenses" | "investments" | "debts" | "settings";
 
 interface DashboardState {
   // Current tab

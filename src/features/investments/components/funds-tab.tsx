@@ -12,6 +12,7 @@ import {
     type FundSnapshot,
 } from "@/hooks/use-finance-data";
 import Money from "@/components/ui/money";
+import { useTranslation } from "@/hooks/use-translation";
 
 const MONTHS_EN = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const COLORS = ["#7c3aed", "#2563eb", "#059669", "#dc2626", "#d97706", "#0891b2", "#db2777", "#be185d", "#065f46", "#92400e"];
@@ -65,6 +66,7 @@ function buildInvestedMap(baseCapital: number, snapshots: FundSnapshot[]): Map<s
 // ── New Fund Form ──────────────────────────────────────────────────────
 
 function NewFundForm({ onClose }: { onClose: () => void }) {
+    const { t } = useTranslation();
     const addFund = useAddFund();
     const { data: investmentTypes = [] } = useInvestmentTypes();
     const today = new Date().toISOString().split("T")[0];
@@ -72,7 +74,7 @@ function NewFundForm({ onClose }: { onClose: () => void }) {
 
     const handleSave = async () => {
         if (!form.name.trim() || !form.baseCapital) {
-            alert("Fill in all required fields");
+            alert(t("funds.alertFillRequired"));
             return;
         }
         try {
@@ -85,43 +87,43 @@ function NewFundForm({ onClose }: { onClose: () => void }) {
             });
             onClose();
         } catch (err) {
-            alert("Failed to create fund: " + (err instanceof Error ? err.message : String(err)));
+            alert(t("funds.alertCreateFailed", { error: err instanceof Error ? err.message : String(err) }));
         }
     };
 
     return (
         <div style={{ background: "#fff", borderRadius: 10, padding: 16, marginBottom: 12, boxShadow: "0 1px 4px #0001" }}>
-            <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 12 }}>New Fund</div>
+            <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 12 }}>{t("funds.newFundTitle")}</div>
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "end" }}>
                 <div>
-                    <label style={{ fontSize: 11, color: "#6b7280", display: "block" }}>Name *</label>
+                    <label style={{ fontSize: 11, color: "#6b7280", display: "block" }}>{t("funds.nameLabel")}</label>
                     <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })}
                         placeholder="e.g. Fiduciaria XYZ"
                         style={{ display: "block", padding: "6px 8px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 12, width: 200 }} />
                 </div>
                 <div>
-                    <label style={{ fontSize: 11, color: "#6b7280", display: "block" }}>Base Capital *</label>
+                    <label style={{ fontSize: 11, color: "#6b7280", display: "block" }}>{t("funds.baseCapitalLabel")}</label>
                     <input type="number" value={form.baseCapital} onChange={(e) => setForm({ ...form, baseCapital: e.target.value })}
                         placeholder="e.g. 1000000"
                         style={{ display: "block", padding: "6px 8px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 12, width: 150 }} />
                 </div>
                 <div>
-                    <label style={{ fontSize: 11, color: "#6b7280", display: "block" }}>Start Date *</label>
+                    <label style={{ fontSize: 11, color: "#6b7280", display: "block" }}>{t("funds.startDateLabel")}</label>
                     <input type="date" value={form.startDate} onChange={(e) => setForm({ ...form, startDate: e.target.value })}
                         style={{ display: "block", padding: "6px 8px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 12 }} />
                 </div>
                 <div>
-                    <label style={{ fontSize: 11, color: "#6b7280", display: "block" }}>Investment Type</label>
+                    <label style={{ fontSize: 11, color: "#6b7280", display: "block" }}>{t("funds.investmentTypeLabel")}</label>
                     <select value={form.typeId} onChange={(e) => setForm({ ...form, typeId: e.target.value })}
                         style={{ display: "block", padding: "6px 8px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 12, width: 160 }}>
-                        <option value="">— None —</option>
-                        {investmentTypes.map((t) => (
-                            <option key={t.id} value={t.id}>{t.name}</option>
+                        <option value="">{t("funds.noneOption")}</option>
+                        {investmentTypes.map((it) => (
+                            <option key={it.id} value={it.id}>{it.name}</option>
                         ))}
                     </select>
                 </div>
                 <div>
-                    <label style={{ fontSize: 11, color: "#6b7280", display: "block" }}>Color</label>
+                    <label style={{ fontSize: 11, color: "#6b7280", display: "block" }}>{t("funds.colorLabel")}</label>
                     <div style={{ display: "flex", gap: 4, marginTop: 4 }}>
                         {COLORS.map((c) => (
                             <button key={c} onClick={() => setForm({ ...form, color: c })}
@@ -131,11 +133,11 @@ function NewFundForm({ onClose }: { onClose: () => void }) {
                 </div>
                 <button onClick={handleSave} disabled={addFund.isPending}
                     style={{ padding: "6px 16px", borderRadius: 8, border: "none", cursor: "pointer", background: "#10b981", color: "#fff", fontWeight: 600, fontSize: 12, opacity: addFund.isPending ? 0.6 : 1 }}>
-                    {addFund.isPending ? "Saving…" : "Save"}
+                    {addFund.isPending ? t("funds.saving") : t("funds.save")}
                 </button>
                 <button onClick={onClose}
                     style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid #d1d5db", cursor: "pointer", background: "#fff", color: "#374151", fontWeight: 600, fontSize: 12 }}>
-                    Cancel
+                    {t("funds.cancel")}
                 </button>
             </div>
         </div>
@@ -145,6 +147,7 @@ function NewFundForm({ onClose }: { onClose: () => void }) {
 // ── Add Monthly Entry Form ─────────────────────────────────────────────
 
 function AddEntryForm({ fund }: { fund: Fund }) {
+    const { t } = useTranslation();
     const upsert = useUpsertFundSnapshot();
     const now = new Date();
     const [day, setDay] = useState(now.getDate());
@@ -163,7 +166,7 @@ function AddEntryForm({ fund }: { fund: Fund }) {
 
     const handleSave = async () => {
         if (!currentValue || enteredValue <= 0) {
-            alert("Enter the current value");
+            alert(t("funds.alertEnterCurrentValue"));
             return;
         }
         try {
@@ -178,52 +181,52 @@ function AddEntryForm({ fund }: { fund: Fund }) {
             setCapitalAdded("");
             setCurrentValue("");
         } catch (err) {
-            alert("Failed to save: " + (err instanceof Error ? err.message : String(err)));
+            alert(t("funds.alertSaveFailed", { error: err instanceof Error ? err.message : String(err) }));
         }
     };
 
     return (
         <div style={{ background: "#f9fafb", borderRadius: 8, padding: 12, marginBottom: 12, border: "1px solid #e5e7eb" }}>
-            <div style={{ fontWeight: 700, fontSize: 12, color: "#374151", marginBottom: 8 }}>Add Entry</div>
+            <div style={{ fontWeight: 700, fontSize: 12, color: "#374151", marginBottom: 8 }}>{t("funds.addEntryTitle")}</div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "end" }}>
                 <div>
-                    <label style={{ fontSize: 11, color: "#6b7280", display: "block" }}>Day</label>
+                    <label style={{ fontSize: 11, color: "#6b7280", display: "block" }}>{t("funds.dayLabel")}</label>
                     <input type="number" value={day} min={1} max={31} onChange={(e) => setDay(parseInt(e.target.value) || 1)}
                         style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 12, width: 60 }} />
                 </div>
                 <div>
-                    <label style={{ fontSize: 11, color: "#6b7280", display: "block" }}>Month</label>
+                    <label style={{ fontSize: 11, color: "#6b7280", display: "block" }}>{t("funds.monthLabel")}</label>
                     <select value={month} onChange={(e) => setMonth(parseInt(e.target.value))}
                         style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 12 }}>
                         {MONTHS_EN.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
                     </select>
                 </div>
                 <div>
-                    <label style={{ fontSize: 11, color: "#6b7280", display: "block" }}>Year</label>
+                    <label style={{ fontSize: 11, color: "#6b7280", display: "block" }}>{t("funds.yearLabel")}</label>
                     <input type="number" value={year} onChange={(e) => setYear(parseInt(e.target.value))}
                         style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 12, width: 80 }} />
                 </div>
                 <div>
-                    <label style={{ fontSize: 11, color: "#6b7280", display: "block" }}>Capital Added</label>
+                    <label style={{ fontSize: 11, color: "#6b7280", display: "block" }}>{t("funds.capitalAddedLabel")}</label>
                     <input type="number" value={capitalAdded} onChange={(e) => setCapitalAdded(e.target.value)}
                         placeholder="0"
                         style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 12, width: 130 }} />
                 </div>
                 <div>
-                    <label style={{ fontSize: 11, color: "#6b7280", display: "block" }}>Current Value *</label>
+                    <label style={{ fontSize: 11, color: "#6b7280", display: "block" }}>{t("funds.currentValueLabel")}</label>
                     <input type="number" value={currentValue} onChange={(e) => setCurrentValue(e.target.value)}
                         placeholder="e.g. 1350000"
                         style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 12, width: 140 }} />
                 </div>
                 <button onClick={handleSave} disabled={upsert.isPending || !currentValue}
                     style={{ padding: "5px 14px", borderRadius: 8, border: "none", cursor: "pointer", background: "#7c3aed", color: "#fff", fontWeight: 600, fontSize: 12, opacity: (upsert.isPending || !currentValue) ? 0.6 : 1 }}>
-                    {upsert.isPending ? "Saving…" : "Save"}
+                    {upsert.isPending ? t("funds.saving") : t("funds.save")}
                 </button>
             </div>
             {enteredValue > 0 && gain != null && gainPct != null && (
                 <div style={{ marginTop: 8, fontSize: 12, display: "flex", gap: 16, flexWrap: "wrap" }}>
-                    <span style={{ color: "#6b7280" }}>Total invested: <strong style={{ color: "#1f2937" }}>{<Money amount={totalInvested} />}</strong></span>
-                    <span style={{ color: "#6b7280" }}>Gain / Loss: <GainBadge gain={gain} pct={gainPct} /></span>
+                    <span style={{ color: "#6b7280" }}>{t("funds.totalInvestedInline")} <strong style={{ color: "#1f2937" }}>{<Money amount={totalInvested} />}</strong></span>
+                    <span style={{ color: "#6b7280" }}>{t("funds.gainLossInline")} <GainBadge gain={gain} pct={gainPct} /></span>
                 </div>
             )}
         </div>
@@ -233,6 +236,7 @@ function AddEntryForm({ fund }: { fund: Fund }) {
 // ── Fund Detail ────────────────────────────────────────────────────────
 
 function FundDetail({ fund, onBack, onDelete }: { fund: Fund; onBack: () => void; onDelete: () => void }) {
+    const { t } = useTranslation();
     const deleteSnapshot = useDeleteFundSnapshot();
 
     const snapshots = useMemo(
@@ -260,7 +264,7 @@ function FundDetail({ fund, onBack, onDelete }: { fund: Fund; onBack: () => void
     const gainPct = gain != null && totalInvested > 0 ? (gain / totalInvested) * 100 : 0;
 
     const handleDeleteSnap = async (id: string) => {
-        if (!confirm("Delete this entry?")) return;
+        if (!confirm(t("funds.confirmDeleteEntry"))) return;
         await deleteSnapshot.mutateAsync(id);
     };
 
@@ -269,7 +273,7 @@ function FundDetail({ fund, onBack, onDelete }: { fund: Fund; onBack: () => void
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
                 <button onClick={onBack}
                     style={{ padding: "5px 10px", borderRadius: 8, border: "1px solid #d1d5db", cursor: "pointer", background: "#fff", color: "#374151", fontSize: 12, fontWeight: 600 }}>
-                    ← Back
+                    {t("funds.back")}
                 </button>
                 <span style={{ width: 12, height: 12, borderRadius: 3, background: fund.color, flexShrink: 0 }} />
                 <span style={{ fontWeight: 700, fontSize: 15, color: "#1f2937" }}>{fund.name}</span>
@@ -280,18 +284,18 @@ function FundDetail({ fund, onBack, onDelete }: { fund: Fund; onBack: () => void
                 )}
                 <button onClick={onDelete}
                     style={{ marginLeft: "auto", padding: "4px 10px", borderRadius: 6, border: "1px solid #fee2e2", background: "#fef2f2", color: "#dc2626", cursor: "pointer", fontSize: 11, fontWeight: 600 }}>
-                    Delete fund
+                    {t("funds.deleteFund")}
                 </button>
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10, marginBottom: 20 }}>
                 {([
-                    { label: "Start Date", value: new Date(fund.startDate).toLocaleDateString("es-CO", { day: "2-digit", month: "short", year: "numeric" }), color: "#6b7280" },
-                    { label: "Base Capital", value: <Money amount={fund.baseCapital} />, color: "#6b7280" },
-                    { label: "Total Contributions", value: <Money amount={totalContribs} />, color: "#f59e0b" },
-                    { label: "Total Invested", value: <Money amount={totalInvested} />, color: "#7c3aed" },
-                    { label: "Current Value", value: currentValue > 0 ? <Money amount={currentValue} /> : "—", color: "#059669" },
-                    { label: "Gain / Loss", value: gain != null ? <GainBadge gain={gain} pct={gainPct} /> : "—", color: gain != null && gain >= 0 ? "#059669" : "#dc2626" },
+                    { label: t("funds.startDate"), value: new Date(fund.startDate).toLocaleDateString("es-CO", { day: "2-digit", month: "short", year: "numeric" }), color: "#6b7280" },
+                    { label: t("funds.baseCapital"), value: <Money amount={fund.baseCapital} />, color: "#6b7280" },
+                    { label: t("funds.totalContributions"), value: <Money amount={totalContribs} />, color: "#f59e0b" },
+                    { label: t("funds.totalInvested"), value: <Money amount={totalInvested} />, color: "#7c3aed" },
+                    { label: t("funds.currentValue"), value: currentValue > 0 ? <Money amount={currentValue} /> : "—", color: "#059669" },
+                    { label: t("funds.gainLoss"), value: gain != null ? <GainBadge gain={gain} pct={gainPct} /> : "—", color: gain != null && gain >= 0 ? "#059669" : "#dc2626" },
                 ] as { label: string; value: React.ReactNode; color: string }[]).map(({ label, value, color }) => (
                     <div key={label} style={{ background: "#fff", borderRadius: 10, padding: 12, boxShadow: "0 1px 4px #0001" }}>
                         <div style={{ fontSize: 10, color: "#6b7280", fontWeight: 600, marginBottom: 4 }}>{label}</div>
@@ -301,22 +305,22 @@ function FundDetail({ fund, onBack, onDelete }: { fund: Fund; onBack: () => void
             </div>
 
             <div style={{ background: "#fff", borderRadius: 10, padding: 14, boxShadow: "0 1px 4px #0001" }}>
-                <div style={{ fontWeight: 700, fontSize: 13, color: "#1f2937", marginBottom: 12 }}>Monthly History</div>
+                <div style={{ fontWeight: 700, fontSize: 13, color: "#1f2937", marginBottom: 12 }}>{t("funds.monthlyHistory")}</div>
                 <AddEntryForm fund={fund} />
                 {snapshots.length === 0 ? (
                     <div style={{ textAlign: "center", color: "#9ca3af", padding: 24, fontSize: 13 }}>
-                        No entries yet. Add the first monthly record above.
+                        {t("funds.noEntriesYet")}
                     </div>
                 ) : (
                     <div style={{ overflowX: "auto" }}>
                         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
                             <thead>
                                 <tr style={{ background: "#f9fafb" }}>
-                                    <th style={{ textAlign: "left", padding: "8px 10px", fontWeight: 600, color: "#374151" }}>Date</th>
-                                    <th style={{ textAlign: "right", padding: "8px 10px", fontWeight: 600, color: "#374151" }}>Capital Added</th>
-                                    <th style={{ textAlign: "right", padding: "8px 10px", fontWeight: 600, color: "#374151" }}>Current Value</th>
-                                    <th style={{ textAlign: "right", padding: "8px 10px", fontWeight: 600, color: "#374151" }}>Total Invested</th>
-                                    <th style={{ textAlign: "right", padding: "8px 10px", fontWeight: 600, color: "#374151" }}>Gain / Loss</th>
+                                    <th style={{ textAlign: "left", padding: "8px 10px", fontWeight: 600, color: "#374151" }}>{t("funds.date")}</th>
+                                    <th style={{ textAlign: "right", padding: "8px 10px", fontWeight: 600, color: "#374151" }}>{t("funds.capitalAdded")}</th>
+                                    <th style={{ textAlign: "right", padding: "8px 10px", fontWeight: 600, color: "#374151" }}>{t("funds.currentValue")}</th>
+                                    <th style={{ textAlign: "right", padding: "8px 10px", fontWeight: 600, color: "#374151" }}>{t("funds.totalInvested")}</th>
+                                    <th style={{ textAlign: "right", padding: "8px 10px", fontWeight: 600, color: "#374151" }}>{t("funds.gainLoss")}</th>
                                     <th style={{ padding: "8px 10px" }}></th>
                                 </tr>
                             </thead>
@@ -345,7 +349,7 @@ function FundDetail({ fund, onBack, onDelete }: { fund: Fund; onBack: () => void
                                             <td style={{ padding: "8px 10px" }}>
                                                 <button onClick={() => handleDeleteSnap(snap.id)} disabled={deleteSnapshot.isPending}
                                                     style={{ padding: "3px 8px", borderRadius: 4, border: "1px solid #fee2e2", background: "#fef2f2", color: "#dc2626", cursor: "pointer", fontSize: 11, fontWeight: 600 }}>
-                                                    Delete
+                                                    {t("funds.deleteAction")}
                                                 </button>
                                             </td>
                                         </tr>
@@ -363,15 +367,16 @@ function FundDetail({ fund, onBack, onDelete }: { fund: Fund; onBack: () => void
 // ── Fund List ──────────────────────────────────────────────────────────
 
 function FundList({ funds, onSelect, onDelete }: { funds: Fund[]; onSelect: (id: string) => void; onDelete: (id: string) => void }) {
+    const { t } = useTranslation();
     const [showNewForm, setShowNewForm] = useState(false);
 
     return (
         <div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                <span style={{ fontWeight: 700, fontSize: 14, color: "#1f2937" }}>Funds</span>
+                <span style={{ fontWeight: 700, fontSize: 14, color: "#1f2937" }}>{t("funds.fundsTitle")}</span>
                 <button onClick={() => setShowNewForm(!showNewForm)}
                     style={{ padding: "6px 14px", borderRadius: 8, border: "none", cursor: "pointer", background: "#7c3aed", color: "#fff", fontWeight: 600, fontSize: 12 }}>
-                    + New Fund
+                    {t("funds.newFundButton")}
                 </button>
             </div>
 
@@ -379,8 +384,8 @@ function FundList({ funds, onSelect, onDelete }: { funds: Fund[]; onSelect: (id:
 
             {funds.length === 0 ? (
                 <div style={{ background: "#fff", borderRadius: 10, padding: 32, textAlign: "center", color: "#9ca3af", boxShadow: "0 1px 4px #0001" }}>
-                    <p style={{ margin: 0, fontSize: 14 }}>No funds yet.</p>
-                    <p style={{ margin: "6px 0 0", fontSize: 12 }}>Click &quot;+ New Fund&quot; to get started.</p>
+                    <p style={{ margin: 0, fontSize: 14 }}>{t("funds.noFundsYet")}</p>
+                    <p style={{ margin: "6px 0 0", fontSize: 12 }}>{t("funds.clickNewFund")}</p>
                 </div>
             ) : (
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 12 }}>
@@ -411,7 +416,7 @@ function FundList({ funds, onSelect, onDelete }: { funds: Fund[]; onSelect: (id:
                                     </div>
                                     <button onClick={(e) => { e.stopPropagation(); onDelete(fund.id); }}
                                         style={{ background: "none", border: "none", cursor: "pointer", color: "#9ca3af", fontSize: 14, padding: 2 }}
-                                        title="Delete">✕</button>
+                                        title={t("funds.deleteAction")}>✕</button>
                                 </div>
                                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
                                     <div>
@@ -425,7 +430,7 @@ function FundList({ funds, onSelect, onDelete }: { funds: Fund[]; onSelect: (id:
                                 </div>
                                 {gain != null && (
                                     <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid #f3f4f6", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                                        <span style={{ fontSize: 11, color: "#6b7280" }}>{fund.snapshots.length} entr{fund.snapshots.length !== 1 ? "ies" : "y"}</span>
+                                        <span style={{ fontSize: 11, color: "#6b7280" }}>{fund.snapshots.length} {fund.snapshots.length !== 1 ? t("funds.entryPlural") : t("funds.entrySingular")}</span>
                                         <GainBadge gain={gain} pct={gainPct} />
                                     </div>
                                 )}
@@ -441,6 +446,7 @@ function FundList({ funds, onSelect, onDelete }: { funds: Fund[]; onSelect: (id:
 // ── Main Tab ───────────────────────────────────────────────────────────
 
 export default function FundsTab() {
+    const { t } = useTranslation();
     const { data: funds = [] } = useFunds();
     const deleteFund = useDeleteFund();
     const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -448,7 +454,7 @@ export default function FundsTab() {
     const selectedFund = useMemo(() => funds.find((f) => f.id === selectedId) ?? null, [funds, selectedId]);
 
     const handleDelete = async (id: string) => {
-        if (!confirm("Delete this fund and all its history?")) return;
+        if (!confirm(t("funds.confirmDeleteFund"))) return;
         await deleteFund.mutateAsync(id);
         if (selectedId === id) setSelectedId(null);
     };

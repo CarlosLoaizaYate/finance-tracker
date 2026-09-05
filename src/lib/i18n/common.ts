@@ -1,0 +1,31 @@
+export const commonEn = {
+  appName: "Finance Tracker",
+  loading: "Loading...",
+  loadingData: "Loading your financial data...",
+  welcomeTitle: "Welcome to Finance Tracker",
+  welcomeBody: "No data found. Click below to load your initial categories, expenses, and investments.",
+  loadInitialData: "Load Initial Data",
+  loadingEllipsis: "Loading...",
+  clickPurpleCell: "Click a purple cell to edit",
+  tabSummary: "Summary",
+  tabExpenses: "Expenses",
+  tabInvestments: "Investments",
+  tabDebts: "Debts",
+  tabSettings: "Settings",
+};
+
+export const commonEs: typeof commonEn = {
+  appName: "Finance Tracker",
+  loading: "Cargando...",
+  loadingData: "Cargando tu información financiera...",
+  welcomeTitle: "Bienvenido a Finance Tracker",
+  welcomeBody: "No se encontraron datos. Haz clic abajo para cargar tus categorías, gastos e inversiones iniciales.",
+  loadInitialData: "Cargar datos iniciales",
+  loadingEllipsis: "Cargando...",
+  clickPurpleCell: "Haz clic en una celda morada para editar",
+  tabSummary: "Resumen",
+  tabExpenses: "Gastos",
+  tabInvestments: "Inversiones",
+  tabDebts: "Deudas",
+  tabSettings: "Configuración",
+};

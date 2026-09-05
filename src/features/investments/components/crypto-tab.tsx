@@ -21,6 +21,7 @@ import {
 import EditableCell from "@/components/ui/editable-cell";
 import Money from "@/components/ui/money";
 import { formatCopInput, parse } from "@/lib/formatters";
+import { useTranslation } from "@/hooks/use-translation";
 
 // ── Styles ────────────────────────────────────────────────────────────
 
@@ -77,6 +78,13 @@ function todayInput(): string {
   return new Date().toISOString().split("T")[0];
 }
 
+/** Days between a "YYYY-MM-DD"-ish date string and today. */
+function daysSince(iso: string): number {
+  const then = new Date(iso).getTime();
+  const now = new Date().setHours(0, 0, 0, 0);
+  return Math.floor((now - then) / 86400000);
+}
+
 export function compareSnapshots(a: CryptoSnapshot, b: CryptoSnapshot): number {
   if (a.year !== b.year) return a.year - b.year;
   if (a.month !== b.month) return a.month - b.month;
@@ -125,6 +133,24 @@ function fifoUsdwLots(usdwPurchases: UsdwPurchase[], btcPurchases: BtcPurchase[]
   return { usdwHeldDerived, usdwCostBasisCop, btcCostBasisCop };
 }
 
+/** Rolls a manually-recorded USDW balance forward by any purchases/exchanges dated *after* it,
+ * so buying more USDW (or spending it on BTC) is reflected immediately without having to
+ * re-enter your rates/balance every time — only needed once a month to true-up interest earned. */
+function rollForwardUsdwBalance(
+  balance: number,
+  balanceDateMs: number,
+  usdwPurchases: UsdwPurchase[],
+  btcPurchases: BtcPurchase[]
+): number {
+  const purchasesAfter = usdwPurchases
+    .filter(p => new Date(p.date).getTime() > balanceDateMs)
+    .reduce((s, p) => s + p.usdwAmount, 0);
+  const spentAfter = btcPurchases
+    .filter(p => new Date(p.date).getTime() > balanceDateMs)
+    .reduce((s, p) => s + p.usdwAmount, 0);
+  return balance + purchasesAfter - spentAfter;
+}
+
 // ── Summary calculations ────────────────────────────────────────────────
 
 export function computeSummary(usdwPurchases: UsdwPurchase[], btcPurchases: BtcPurchase[], snapshots: CryptoSnapshot[]) {
@@ -140,10 +166,18 @@ export function computeSummary(usdwPurchases: UsdwPurchase[], btcPurchases: BtcP
   const sortedSnaps = [...snapshots].sort(compareSnapshots);
   const latestSnapshot = sortedSnaps.at(-1) ?? null;
 
-  // If you've manually recorded your actual USDW balance (e.g. to reflect interest earned),
-  // use that for valuation instead of the purchases-derived figure.
-  const usdwHeld = latestSnapshot?.usdwBalance ?? usdwHeldDerived;
+  // If you've manually recorded your actual USDW balance (e.g. to reflect interest earned), use
+  // that as the base and roll it forward by any purchases/BTC exchanges made since that date —
+  // so new activity shows up immediately, and you only need to re-enter your real balance monthly.
   const hasUsdwBalanceOverride = latestSnapshot?.usdwBalance != null;
+  const usdwHeld = latestSnapshot?.usdwBalance != null
+    ? rollForwardUsdwBalance(
+        latestSnapshot.usdwBalance,
+        new Date(latestSnapshot.year, latestSnapshot.month - 1, latestSnapshot.day).getTime(),
+        usdwPurchases,
+        btcPurchases
+      )
+    : usdwHeldDerived;
 
   const usdCopRateNow = latestSnapshot?.usdCopRate ?? avgHeldRate;
   const usdGrowthPct = avgHeldRate > 0 ? ((usdCopRateNow / avgHeldRate) - 1) * 100 : 0;
@@ -224,7 +258,14 @@ export function computeCryptoValueAtMonth(
     .filter(s => s.year * 12 + (s.month - 1) <= monthAbs)
     .sort(compareSnapshots);
   const latest = relevantSnaps.at(-1) ?? null;
-  const usdwHeld = latest?.usdwBalance ?? usdwHeldDerived;
+  const usdwHeld = latest?.usdwBalance != null
+    ? rollForwardUsdwBalance(
+        latest.usdwBalance,
+        new Date(latest.year, latest.month - 1, latest.day).getTime(),
+        relevantUsdw,
+        relevantBtc
+      )
+    : usdwHeldDerived;
 
   const usdwValue = latest ? usdwHeld * latest.usdCopRate : usdwHeld * avgHeldRate;
   const btcValue = latest ? btcHeld * latest.btcPriceUsd * latest.usdCopRate : btcCostBasisCop;
@@ -240,6 +281,7 @@ export function effectiveSellCommission(storedSellCommission: number, currentVal
 // ── Main tab ──────────────────────────────────────────────────────────
 
 export default function CryptoTab() {
+  const { t } = useTranslation();
   const { data: usdwPurchases = [] } = useUsdwPurchases();
   const { data: btcPurchases = [] } = useBtcPurchases();
   const { data: snapshots = [] } = useCryptoSnapshots();
@@ -268,6 +310,12 @@ export default function CryptoTab() {
   const netIfSold = totalGain - sellCommission;
   const netIfSoldPct = totalInvested > 0 ? (netIfSold / totalInvested) * 100 : 0;
 
+  const latestSnapIso = summary.latestSnapshot
+    ? `${summary.latestSnapshot.year}-${String(summary.latestSnapshot.month).padStart(2, "0")}-${String(summary.latestSnapshot.day).padStart(2, "0")}`
+    : null;
+  const daysSinceUpdate = latestSnapIso ? daysSince(latestSnapIso) : 0;
+  const staleColor = daysSinceUpdate > 35 ? "#dc2626" : daysSinceUpdate > 20 ? "#d97706" : "#9ca3af";
+
   const [showUsdwForm, setShowUsdwForm] = useState(false);
   const [showBtcForm, setShowBtcForm] = useState(false);
   const [showSnapForm, setShowSnapForm] = useState(false);
@@ -276,17 +324,17 @@ export default function CryptoTab() {
     <>
       {/* Position summary */}
       <div style={{ ...card, marginBottom: 16 }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: "#374151", marginBottom: 12 }}>Position (USDW + BTC)</div>
-        <StatRow label="Invested" value={<Money amount={totalInvested} />} />
-        <StatRow label="Current value" value={<Money amount={totalCurrentValue} />} valueColor="#059669" />
+        <div style={{ fontSize: 13, fontWeight: 700, color: "#374151", marginBottom: 12 }}>{t("crypto.positionTitle")}</div>
+        <StatRow label={t("crypto.invested")} value={<Money amount={totalInvested} />} />
+        <StatRow label={t("crypto.currentValue")} value={<Money amount={totalCurrentValue} />} valueColor="#059669" />
         <StatRow
-          label="Gain / Loss"
+          label={t("crypto.gainLoss")}
           value={<>{totalGain >= 0 ? "+" : ""}<Money amount={totalGain} /> ({totalGainPct >= 0 ? "+" : ""}{totalGainPct.toFixed(2)}%)</>}
           valueColor={totalGain >= 0 ? "#059669" : "#dc2626"}
         />
         <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", fontSize: 13, alignItems: "center" }}>
           <span style={{ color: "#6b7280" }}>
-            Sell commission <span style={{ color: "#9ca3af" }}>· default {(commissionRate * 100).toFixed(2)}%</span>
+            {t("crypto.sellCommission")} <span style={{ color: "#9ca3af" }}>{t("crypto.defaultPct", { pct: (commissionRate * 100).toFixed(2) })}</span>
           </span>
           <EditableCell
             value={sellCommission}
@@ -295,12 +343,12 @@ export default function CryptoTab() {
           />
         </div>
         <StatRow
-          label="Net if sold"
+          label={t("crypto.netIfSold")}
           value={<>{netIfSold >= 0 ? "+" : ""}<Money amount={netIfSold} /> ({netIfSoldPct >= 0 ? "+" : ""}{netIfSoldPct.toFixed(2)}%)</>}
           valueColor={netIfSold >= 0 ? "#059669" : "#dc2626"}
         />
         <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", fontSize: 13, alignItems: "center" }}>
-          <span style={{ color: "#6b7280" }}>Default exchange commission</span>
+          <span style={{ color: "#6b7280" }}>{t("crypto.defaultExchangeCommission")}</span>
           <PercentEditableCell value={commissionRate} onChange={v => updateRateMut.mutate(v)} />
         </div>
       </div>
@@ -309,33 +357,33 @@ export default function CryptoTab() {
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
         <div style={card}>
           <div style={{ fontSize: 13, fontWeight: 700, color: "#374151", marginBottom: 12 }}>
-            USDW (dólares virtuales)
+            {t("crypto.usdwTitle")}
             {summary.hasUsdwBalanceOverride && (
-              <span style={{ fontSize: 11, fontWeight: 400, color: "#9ca3af", marginLeft: 6 }}>· balance ingresado manualmente</span>
+              <span style={{ fontSize: 11, fontWeight: 400, color: "#9ca3af", marginLeft: 6 }}>{t("crypto.manualBalanceNote")}</span>
             )}
           </div>
-          <StatRow label="Held" value={<Money amount={summary.usdwHeld} currency="USDW" />} />
-          <StatRow label="Invested" value={<Money amount={summary.usdwCostBasisCop} />} />
-          <StatRow label="Value in COP" value={<Money amount={summary.usdValueCop} />} valueColor="#059669" />
-          <StatRow label="Avg. buy rate (per USD)" value={summary.avgHeldRate > 0 ? <Money amount={summary.avgHeldRate} /> : "—"} />
+          <StatRow label={t("crypto.held")} value={<Money amount={summary.usdwHeld} currency="USDW" />} />
+          <StatRow label={t("crypto.invested")} value={<Money amount={summary.usdwCostBasisCop} />} />
+          <StatRow label={t("crypto.valueInCop")} value={<Money amount={summary.usdValueCop} />} valueColor="#059669" />
+          <StatRow label={t("crypto.avgBuyRatePerUsd")} value={summary.avgHeldRate > 0 ? <Money amount={summary.avgHeldRate} /> : "—"} />
 
-          <SectionLabel>Performance</SectionLabel>
+          <SectionLabel>{t("crypto.performance")}</SectionLabel>
           <StatRow
-            label="Currency effect (COP)"
+            label={t("crypto.currencyEffectCop")}
             value={summary.avgHeldRate > 0
               ? <>{summary.usdwFxEffectCop >= 0 ? "+" : ""}<Money amount={summary.usdwFxEffectCop} /> ({summary.usdGrowthPct >= 0 ? "+" : ""}{summary.usdGrowthPct.toFixed(2)}%)</>
               : "—"}
             valueColor={summary.usdwFxEffectCop >= 0 ? "#059669" : "#dc2626"}
           />
           <StatRow
-            label="Gain / Loss (USD)"
+            label={t("crypto.gainLossUsd")}
             value={summary.usdwHeldDerived > 0 || summary.hasUsdwBalanceOverride
               ? <>{summary.usdwGainUsd >= 0 ? "+" : ""}<Money amount={summary.usdwGainUsd} currency="USDW" /></>
               : "—"}
             valueColor={summary.usdwGainUsd >= 0 ? "#059669" : "#dc2626"}
           />
           <StatRow
-            label="Gain / Loss (COP)"
+            label={t("crypto.gainLossCop")}
             value={summary.usdwHeldDerived > 0 || summary.hasUsdwBalanceOverride
               ? <>{summary.usdwGainCop >= 0 ? "+" : ""}<Money amount={summary.usdwGainCop} /></>
               : "—"}
@@ -343,30 +391,30 @@ export default function CryptoTab() {
           />
         </div>
         <div style={card}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: "#374151", marginBottom: 12 }}>BTC</div>
-          <StatRow label="Held" value={<Money amount={summary.btcHeld} currency="BTC" />} />
-          <StatRow label="Invested (USD)" value={summary.btcCostUsdw > 0 ? <Money amount={summary.btcCostUsdw} currency="USDW" /> : "—"} />
-          <StatRow label="Invested (COP)" value={summary.btcCostUsdw > 0 ? <Money amount={summary.btcCostBasisCop} /> : "—"} />
-          <StatRow label="Avg. buy price (per BTC)" value={summary.avgBtcBuyPriceUsdw > 0 ? <Money amount={summary.avgBtcBuyPriceUsdw} currency="USDW" /> : "—"} />
-          <StatRow label="BTC price" value={summary.btcPriceUsdNow > 0 ? <Money amount={summary.btcPriceUsdNow} currency="USD" /> : "—"} />
-          <StatRow label="Value in USD" value={<Money amount={summary.btcValueUsd} currency="USD" />} valueColor="#059669" />
-          <StatRow label="Value in COP" value={<Money amount={summary.btcValueCop} />} valueColor="#059669" />
+          <div style={{ fontSize: 13, fontWeight: 700, color: "#374151", marginBottom: 12 }}>{t("crypto.btcTitle")}</div>
+          <StatRow label={t("crypto.held")} value={<Money amount={summary.btcHeld} currency="BTC" />} />
+          <StatRow label={t("crypto.investedUsd")} value={summary.btcCostUsdw > 0 ? <Money amount={summary.btcCostUsdw} currency="USDW" /> : "—"} />
+          <StatRow label={t("crypto.investedCop")} value={summary.btcCostUsdw > 0 ? <Money amount={summary.btcCostBasisCop} /> : "—"} />
+          <StatRow label={t("crypto.avgBuyPricePerBtc")} value={summary.avgBtcBuyPriceUsdw > 0 ? <Money amount={summary.avgBtcBuyPriceUsdw} currency="USDW" /> : "—"} />
+          <StatRow label={t("crypto.btcPrice")} value={summary.btcPriceUsdNow > 0 ? <Money amount={summary.btcPriceUsdNow} currency="USD" /> : "—"} />
+          <StatRow label={t("crypto.valueInUsd")} value={<Money amount={summary.btcValueUsd} currency="USD" />} valueColor="#059669" />
+          <StatRow label={t("crypto.valueInCop")} value={<Money amount={summary.btcValueCop} />} valueColor="#059669" />
 
-          <SectionLabel>Performance</SectionLabel>
+          <SectionLabel>{t("crypto.performance")}</SectionLabel>
           <StatRow
-            label="Growth since purchase"
+            label={t("crypto.growthSincePurchase")}
             value={summary.btcCostUsdw > 0 ? `${summary.btcGrowthPct >= 0 ? "+" : ""}${summary.btcGrowthPct.toFixed(2)}%` : "—"}
             valueColor={summary.btcGrowthPct >= 0 ? "#059669" : "#dc2626"}
           />
           <StatRow
-            label="Gain / Loss (USD)"
+            label={t("crypto.gainLossUsd")}
             value={summary.btcCostUsdw > 0
               ? <>{summary.btcGainUsd >= 0 ? "+" : ""}<Money amount={summary.btcGainUsd} currency="USD" /></>
               : "—"}
             valueColor={summary.btcGainUsd >= 0 ? "#059669" : "#dc2626"}
           />
           <StatRow
-            label="Gain / Loss (COP)"
+            label={t("crypto.gainLossCop")}
             value={summary.btcCostUsdw > 0
               ? <>{summary.btcGainCop >= 0 ? "+" : ""}<Money amount={summary.btcGainCop} /></>
               : "—"}
@@ -379,16 +427,19 @@ export default function CryptoTab() {
       <div style={{ ...card, marginBottom: 16 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: showSnapForm ? 12 : 0 }}>
           <div>
-            <div style={{ fontSize: 13, fontWeight: 700, color: "#374151" }}>Rates</div>
-            {summary.latestSnapshot && (
+            <div style={{ fontSize: 13, fontWeight: 700, color: "#374151" }}>{t("crypto.ratesTitle")}</div>
+            {summary.latestSnapshot && latestSnapIso && (
               <div style={{ fontSize: 12, color: "#6b7280", marginTop: 2 }}>
-                Last updated {fmtDate(`${summary.latestSnapshot.year}-${String(summary.latestSnapshot.month).padStart(2, "0")}-${String(summary.latestSnapshot.day).padStart(2, "0")}`)}
-                {" · "}USD/COP: <strong>{<Money amount={summary.latestSnapshot.usdCopRate} />}</strong>
-                {" · "}BTC: <strong>{<Money amount={summary.latestSnapshot.btcPriceUsd} currency="USD" />}</strong>
+                {t("crypto.lastUpdated")} {fmtDate(latestSnapIso)}
+                {" "}<span style={{ color: staleColor, fontWeight: 600 }}>
+                  ({daysSinceUpdate === 0 ? t("crypto.daysAgoToday") : daysSinceUpdate === 1 ? t("crypto.daysAgoOne") : t("crypto.daysAgoMany", { days: daysSinceUpdate })})
+                </span>
+                {" · "}{t("crypto.usdCopRateInline")} <strong>{<Money amount={summary.latestSnapshot.usdCopRate} />}</strong>
+                {" · "}{t("crypto.btcInline")} <strong>{<Money amount={summary.latestSnapshot.btcPriceUsd} currency="USD" />}</strong>
               </div>
             )}
           </div>
-          {!showSnapForm && <button onClick={() => setShowSnapForm(true)} style={btn()}>+ Update rates</button>}
+          {!showSnapForm && <button onClick={() => setShowSnapForm(true)} style={btn()}>{t("crypto.updateRates")}</button>}
         </div>
         {showSnapForm && (
           <SnapshotForm
@@ -402,7 +453,7 @@ export default function CryptoTab() {
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
               <thead>
                 <tr>
-                  {["Date", "USD/COP", "BTC (USD)", "USDW balance", ""].map(h => (
+                  {[t("crypto.colDate"), t("crypto.colUsdCop"), t("crypto.colBtcUsd"), t("crypto.colUsdwBalance"), ""].map(h => (
                     <th key={h} style={{ padding: "6px 10px", textAlign: "left", fontSize: 11, color: "#9ca3af", fontWeight: 600 }}>{h}</th>
                   ))}
                 </tr>
@@ -431,8 +482,8 @@ export default function CryptoTab() {
       {/* USDW purchases */}
       <div style={{ ...card, marginBottom: 16 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: showUsdwForm ? 12 : 0 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: "#374151" }}>USDW purchases (COP → USDW)</div>
-          {!showUsdwForm && <button onClick={() => setShowUsdwForm(true)} style={btn()}>+ Add purchase</button>}
+          <div style={{ fontSize: 13, fontWeight: 700, color: "#374151" }}>{t("crypto.usdwPurchasesTitle")}</div>
+          {!showUsdwForm && <button onClick={() => setShowUsdwForm(true)} style={btn()}>{t("crypto.addPurchase")}</button>}
         </div>
         {showUsdwForm && (
           <UsdwPurchaseForm
@@ -443,13 +494,13 @@ export default function CryptoTab() {
           />
         )}
         {usdwPurchases.length === 0 ? (
-          <div style={{ padding: "12px 0", color: "#9ca3af", fontSize: 12 }}>No entries yet.</div>
+          <div style={{ padding: "12px 0", color: "#9ca3af", fontSize: 12 }}>{t("crypto.noEntries")}</div>
         ) : (
           <div style={{ marginTop: 12, overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
               <thead>
                 <tr>
-                  {["Date", "COP paid", "Commission", "USDW received", "Implied rate", "Notes", ""].map(h => (
+                  {[t("crypto.colDate"), t("crypto.colCopPaid"), t("crypto.colCommission"), t("crypto.colUsdwReceived"), t("crypto.colImpliedRate"), t("crypto.colNotes"), ""].map(h => (
                     <th key={h} style={{ padding: "6px 10px", textAlign: "left", fontSize: 11, color: "#9ca3af", fontWeight: 600 }}>{h}</th>
                   ))}
                 </tr>
@@ -480,8 +531,8 @@ export default function CryptoTab() {
       {/* BTC purchases */}
       <div style={card}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: showBtcForm ? 12 : 0 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: "#374151" }}>BTC exchanges (USDW → BTC)</div>
-          {!showBtcForm && <button onClick={() => setShowBtcForm(true)} style={btn()}>+ Add exchange</button>}
+          <div style={{ fontSize: 13, fontWeight: 700, color: "#374151" }}>{t("crypto.btcExchangesTitle")}</div>
+          {!showBtcForm && <button onClick={() => setShowBtcForm(true)} style={btn()}>{t("crypto.addExchange")}</button>}
         </div>
         {showBtcForm && (
           <BtcPurchaseForm
@@ -493,13 +544,13 @@ export default function CryptoTab() {
           />
         )}
         {btcPurchases.length === 0 ? (
-          <div style={{ padding: "12px 0", color: "#9ca3af", fontSize: 12 }}>No entries yet.</div>
+          <div style={{ padding: "12px 0", color: "#9ca3af", fontSize: 12 }}>{t("crypto.noEntries")}</div>
         ) : (
           <div style={{ marginTop: 12, overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
               <thead>
                 <tr>
-                  {["Date", "USDW in", "Commission", "BTC price", "BTC received", "Notes", ""].map(h => (
+                  {[t("crypto.colDate"), t("crypto.colUsdwIn"), t("crypto.colCommission"), t("crypto.btcPrice"), t("crypto.colBtcReceived"), t("crypto.colNotes"), ""].map(h => (
                     <th key={h} style={{ padding: "6px 10px", textAlign: "left", fontSize: 11, color: "#9ca3af", fontWeight: 600 }}>{h}</th>
                   ))}
                 </tr>
@@ -553,6 +604,7 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 
 /** Click-to-edit percentage (stored internally as a decimal rate, e.g. 0.001 = 0.10%). */
 function PercentEditableCell({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  const { t } = useTranslation();
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState("");
 
@@ -583,7 +635,7 @@ function PercentEditableCell({ value, onChange }: { value: number; onChange: (v:
   return (
     <span
       onClick={start}
-      title="Click to edit"
+      title={t("crypto.clickToEdit")}
       style={{
         cursor: "text", padding: "3px 8px", borderRadius: 6,
         background: value > 0 ? "#ede9fe" : "#f9fafb",
@@ -606,6 +658,7 @@ function UsdwPurchaseForm({ onSave, onCancel, loading, commissionRate }: {
   loading: boolean;
   commissionRate: number;
 }) {
+  const { t } = useTranslation();
   const [date, setDate] = useState(todayInput());
   const [copAmount, setCopAmount] = useState("");
   const [commissionCop, setCommissionCop] = useState("0");
@@ -635,34 +688,34 @@ function UsdwPurchaseForm({ onSave, onCancel, loading, commissionRate }: {
     <div style={{ borderTop: "1px solid #e5e7eb", paddingTop: 12 }}>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 12, marginBottom: 12 }}>
         <div>
-          <span style={label}>Date</span>
+          <span style={label}>{t("crypto.colDate")}</span>
           <input style={input} type="date" value={date} onChange={e => setDate(e.target.value)} />
         </div>
         <div>
-          <span style={label}>COP paid (total)</span>
-          <input style={input} placeholder="500.000,50" value={copAmount}
+          <span style={label}>{t("crypto.copPaidTotal")}</span>
+          <input style={input} placeholder={t("crypto.placeholderCopAmount")} value={copAmount}
             onChange={e => handleCopAmountChange(e.target.value)} />
         </div>
         <div>
-          <span style={label}>Commission (COP) <span style={{ color: "#9ca3af" }}>· default {(commissionRate * 100).toFixed(2)}%</span></span>
-          <input style={input} placeholder="0" value={commissionCop}
+          <span style={label}>{t("crypto.commissionCopLabel")} <span style={{ color: "#9ca3af" }}>{t("crypto.defaultPct", { pct: (commissionRate * 100).toFixed(2) })}</span></span>
+          <input style={input} placeholder={t("crypto.placeholderZero")} value={commissionCop}
             onChange={e => {
               setCommissionTouched(true);
               setCommissionCop(formatCopInput(e.target.value));
             }} />
         </div>
         <div>
-          <span style={label}>USDW received</span>
-          <input style={input} type="number" step="any" placeholder="120.50" value={usdwAmount} onChange={e => setUsdwAmount(e.target.value)} />
+          <span style={label}>{t("crypto.colUsdwReceived")}</span>
+          <input style={input} type="number" step="any" placeholder={t("crypto.placeholderUsdwAmount")} value={usdwAmount} onChange={e => setUsdwAmount(e.target.value)} />
         </div>
       </div>
       <div style={{ marginBottom: 12 }}>
-        <span style={label}>Notes</span>
-        <input style={input} placeholder="Optional" value={notes} onChange={e => setNotes(e.target.value)} />
+        <span style={label}>{t("crypto.colNotes")}</span>
+        <input style={input} placeholder={t("crypto.optional")} value={notes} onChange={e => setNotes(e.target.value)} />
       </div>
       <div style={{ display: "flex", gap: 8 }}>
-        <button onClick={handleSubmit} style={btn()} disabled={loading}>{loading ? "Saving…" : "Save"}</button>
-        <button onClick={onCancel} style={ghost}>Cancel</button>
+        <button onClick={handleSubmit} style={btn()} disabled={loading}>{loading ? t("crypto.saving") : t("crypto.save")}</button>
+        <button onClick={onCancel} style={ghost}>{t("crypto.cancel")}</button>
       </div>
     </div>
   );
@@ -675,6 +728,7 @@ function BtcPurchaseForm({ onSave, onCancel, loading, commissionRate, availableU
   commissionRate: number;
   availableUsdw: number;
 }) {
+  const { t } = useTranslation();
   const [date, setDate] = useState(todayInput());
   const [usdwAmount, setUsdwAmount] = useState("");
   const [commissionUsdw, setCommissionUsdw] = useState("0");
@@ -753,30 +807,30 @@ function BtcPurchaseForm({ onSave, onCancel, loading, commissionRate, availableU
     <div style={{ borderTop: "1px solid #e5e7eb", paddingTop: 12 }}>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr 1fr", gap: 12, marginBottom: 12 }}>
         <div>
-          <span style={label}>Date</span>
+          <span style={label}>{t("crypto.colDate")}</span>
           <input style={input} type="date" value={date} onChange={e => setDate(e.target.value)} />
         </div>
         <div>
-          <span style={label}>USDW in (total) <span style={{ color: "#9ca3af" }}>· available {<Money amount={availableUsdw} currency="USDW" />}</span></span>
-          <input style={input} type="number" step="any" placeholder="120.50" value={usdwAmount} onChange={e => handleUsdwAmountChange(e.target.value)} />
+          <span style={label}>{t("crypto.usdwInTotal")} <span style={{ color: "#9ca3af" }}>{t("crypto.availableLabel")} {<Money amount={availableUsdw} currency="USDW" />}</span></span>
+          <input style={input} type="number" step="any" placeholder={t("crypto.placeholderUsdwAmount")} value={usdwAmount} onChange={e => handleUsdwAmountChange(e.target.value)} />
         </div>
         <div>
-          <span style={label}>Commission (USDW) <span style={{ color: "#9ca3af" }}>· default {(commissionRate * 100).toFixed(2)}%</span></span>
-          <input style={input} type="number" step="any" placeholder="0" value={commissionUsdw}
+          <span style={label}>{t("crypto.commissionUsdwLabel")} <span style={{ color: "#9ca3af" }}>{t("crypto.defaultPct", { pct: (commissionRate * 100).toFixed(2) })}</span></span>
+          <input style={input} type="number" step="any" placeholder={t("crypto.placeholderZero")} value={commissionUsdw}
             onChange={e => handleCommissionChange(e.target.value)} />
         </div>
         <div>
-          <span style={label}>BTC price (USDW)</span>
-          <input style={input} type="number" step="any" placeholder="65000" value={btcPriceUsdw} onChange={e => handlePriceChange(e.target.value)} />
+          <span style={label}>{t("crypto.btcPriceUsdwLabel")}</span>
+          <input style={input} type="number" step="any" placeholder={t("crypto.placeholderBtcPrice")} value={btcPriceUsdw} onChange={e => handlePriceChange(e.target.value)} />
         </div>
         <div>
-          <span style={label}>BTC received</span>
-          <input style={input} type="number" step="any" placeholder="0.00185" value={btcAmount} onChange={e => handleReceivedChange(e.target.value)} />
+          <span style={label}>{t("crypto.colBtcReceived")}</span>
+          <input style={input} type="number" step="any" placeholder={t("crypto.placeholderBtcReceived")} value={btcAmount} onChange={e => handleReceivedChange(e.target.value)} />
         </div>
       </div>
       {usdwExceedsAvailable && (
         <div style={{ fontSize: 12, color: "#dc2626", marginBottom: 12 }}>
-          Only {<Money amount={availableUsdw} currency="USDW" />} available — reduce the amount.
+          {t("crypto.onlyAvailablePrefix")} {<Money amount={availableUsdw} currency="USDW" />} {t("crypto.onlyAvailableSuffix")}
         </div>
       )}
       <div style={{ display: "flex", gap: 8 }}>
@@ -784,8 +838,8 @@ function BtcPurchaseForm({ onSave, onCancel, loading, commissionRate, availableU
           onClick={handleSubmit}
           style={{ ...btn(), opacity: usdwExceedsAvailable ? 0.5 : 1, cursor: usdwExceedsAvailable ? "not-allowed" : "pointer" }}
           disabled={loading || usdwExceedsAvailable}
-        >{loading ? "Saving…" : "Save"}</button>
-        <button onClick={onCancel} style={ghost}>Cancel</button>
+        >{loading ? t("crypto.saving") : t("crypto.save")}</button>
+        <button onClick={onCancel} style={ghost}>{t("crypto.cancel")}</button>
       </div>
     </div>
   );
@@ -796,6 +850,7 @@ function SnapshotForm({ onSave, onCancel, loading }: {
   onCancel: () => void;
   loading: boolean;
 }) {
+  const { t } = useTranslation();
   const [date, setDate] = useState(todayInput());
   const [usdCopRate, setUsdCopRate] = useState("");
   const [btcPriceUsd, setBtcPriceUsd] = useState("");
@@ -814,26 +869,26 @@ function SnapshotForm({ onSave, onCancel, loading }: {
     <div style={{ borderTop: "1px solid #e5e7eb", paddingTop: 12 }}>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 12, marginBottom: 12 }}>
         <div>
-          <span style={label}>Date</span>
+          <span style={label}>{t("crypto.colDate")}</span>
           <input style={input} type="date" value={date} onChange={e => setDate(e.target.value)} />
         </div>
         <div>
-          <span style={label}>USD/COP rate</span>
-          <input style={input} placeholder="4.100,50" value={usdCopRate}
+          <span style={label}>{t("crypto.usdCopRateLabel")}</span>
+          <input style={input} placeholder={t("crypto.placeholderUsdCopRate")} value={usdCopRate}
             onChange={e => setUsdCopRate(formatCopInput(e.target.value))} />
         </div>
         <div>
-          <span style={label}>BTC price (USD)</span>
-          <input style={input} type="number" step="any" placeholder="65000" value={btcPriceUsd} onChange={e => setBtcPriceUsd(e.target.value)} />
+          <span style={label}>{t("crypto.btcPriceUsdLabel")}</span>
+          <input style={input} type="number" step="any" placeholder={t("crypto.placeholderBtcPrice")} value={btcPriceUsd} onChange={e => setBtcPriceUsd(e.target.value)} />
         </div>
         <div>
-          <span style={label}>USDW balance <span style={{ color: "#9ca3af" }}>· optional, for interest earned</span></span>
-          <input style={input} type="number" step="any" placeholder="e.g. 121.35" value={usdwBalance} onChange={e => setUsdwBalance(e.target.value)} />
+          <span style={label}>{t("crypto.colUsdwBalance")} <span style={{ color: "#9ca3af" }}>{t("crypto.usdwBalanceNote")}</span></span>
+          <input style={input} type="number" step="any" placeholder={t("crypto.placeholderUsdwBalance")} value={usdwBalance} onChange={e => setUsdwBalance(e.target.value)} />
         </div>
       </div>
       <div style={{ display: "flex", gap: 8 }}>
-        <button onClick={handleSubmit} style={btn()} disabled={loading}>{loading ? "Saving…" : "Save"}</button>
-        <button onClick={onCancel} style={ghost}>Cancel</button>
+        <button onClick={handleSubmit} style={btn()} disabled={loading}>{loading ? t("crypto.saving") : t("crypto.save")}</button>
+        <button onClick={onCancel} style={ghost}>{t("crypto.cancel")}</button>
       </div>
     </div>
   );

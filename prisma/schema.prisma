@@ -31,6 +31,8 @@ model User {
   usdwPurchases          UsdwPurchase[]
   btcPurchases           BtcPurchase[]
   cryptoSnapshots        CryptoSnapshot[]
+  mortgages              Mortgage[]
+  mortgagePayments       MortgagePayment[]
 }
 
 model Category {
@@ -280,4 +282,42 @@ model CryptoSnapshot {
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, day, month, year])
+}
+
+// ── Debts: Mortgage ──────────────────────────────────────────────────
+
+model Mortgage {
+  id             String    @id @default(uuid())
+  name           String
+  entity         String
+  principal      Int                    // original amount disbursed (COP)
+  interestRate   Float                  // tasa pactada — contractual effective annual rate (%)
+  subsidizedRate Float?                 // tasa cobrada — actual rate charged today, net of any government rate subsidy (%)
+  subsidyRate    Float?                 // tasa de cobertura — the subsidy benefit itself (%), e.g. "Mi Casa Ya"
+  subsidyEndDate DateTime?              // date the rate-coverage benefit is expected to end
+  isUvrIndexed   Boolean   @default(false)
+  termMonths     Int
+  startDate      DateTime
+  notes          String    @default("")
+  createdAt      DateTime  @default(now())
+  userId         String
+  user           User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  payments       MortgagePayment[]
+}
+
+model MortgagePayment {
+  id               String   @id @default(uuid())
+  mortgageId       String
+  date             DateTime
+  principalPaid    Int                   // COP applied to principal
+  interestPaid     Int      @default(0)  // COP of interest actually paid by the client (0 for a pure abono a capital)
+  interestCovered  Int      @default(0)  // COP of interest covered by a rate subsidy/benefit, not paid by the client
+  insurancePaid    Int      @default(0)  // COP of life/property insurance premiums paid alongside the cuota
+  realBalance      Int?                  // "Saldo a la Fecha de Corte" — the bank's own reported balance for this period's cutoff (usually the 15th), when known. Authoritative over the derived balance when present.
+  isExtra          Boolean  @default(false) // true = extra principal payment outside the regular cuota
+  notes            String   @default("")
+  createdAt        DateTime @default(now())
+  userId           String
+  mortgage         Mortgage @relation(fields: [mortgageId], references: [id], onDelete: Cascade)
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

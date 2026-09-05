@@ -19,8 +19,10 @@ import {
 } from "@/hooks/use-finance-data";
 import { fmt } from "@/lib/formatters";
 import Money from "@/components/ui/money";
+import { useTranslation } from "@/hooks/use-translation";
 
 type TermUnit = "DAYS" | "MONTHS";
+type TFunc = (key: string, vars?: Record<string, string | number>) => string;
 
 /** Parses "YYYY-MM-DD" (or ISO string) as LOCAL midnight — avoids UTC offset shifting the day. */
 function parseLocalDate(iso: string): Date {
@@ -54,8 +56,11 @@ function calcExpectedValue(capital: number, rateEA: number, term: number, unit: 
   return Math.round(capital * Math.pow(1 + rateEA / 100, exponent));
 }
 
-function termLabel(term: number, unit: TermUnit): string {
-  return unit === "DAYS" ? `${term} day${term === 1 ? "" : "s"}` : `${term} month${term === 1 ? "" : "s"}`;
+function termLabel(t: TFunc, term: number, unit: TermUnit): string {
+  const unitWord = unit === "DAYS"
+    ? (term === 1 ? t("fixedDeposits.day") : t("fixedDeposits.days"))
+    : (term === 1 ? t("fixedDeposits.month") : t("fixedDeposits.months"));
+  return `${term} ${unitWord}`;
 }
 
 const MONTH_NAMES = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
@@ -222,19 +227,20 @@ const label: React.CSSProperties = {
 // ── Sub-components ────────────────────────────────────────────────────
 
 function SummaryCards({ summary }: { summary: GroupSummary }) {
+  const { t } = useTranslation();
   const pct = summary.totalInvested > 0 ? (summary.realAccumulatedGain / summary.totalInvested) * 100 : 0;
   return (
     <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 20 }}>
       <div style={{ ...card, textAlign: "center" }}>
-        <div style={{ fontSize: 11, color: "#9ca3af", marginBottom: 4 }}>Initial capital</div>
+        <div style={{ fontSize: 11, color: "#9ca3af", marginBottom: 4 }}>{t("fixedDeposits.initialCapital")}</div>
         <div style={{ fontSize: 20, fontWeight: 700, color: "#6b7280" }}>{<Money amount={summary.initialCapital} />}</div>
       </div>
       <div style={{ ...card, textAlign: "center" }}>
-        <div style={{ fontSize: 11, color: "#9ca3af", marginBottom: 4 }}>Total invested</div>
+        <div style={{ fontSize: 11, color: "#9ca3af", marginBottom: 4 }}>{t("fixedDeposits.totalInvested")}</div>
         <div style={{ fontSize: 20, fontWeight: 700, color: "#2563eb" }}>{<Money amount={summary.totalInvested} />}</div>
       </div>
       <div style={{ ...card, textAlign: "center" }}>
-        <div style={{ fontSize: 11, color: "#9ca3af", marginBottom: 4 }}>Accumulated real gain</div>
+        <div style={{ fontSize: 11, color: "#9ca3af", marginBottom: 4 }}>{t("fixedDeposits.accumulatedRealGain")}</div>
         <div style={{ fontSize: 20, fontWeight: 700, color: "#16a34a" }}>
           {summary.hasRealData ? <>+<Money amount={summary.realAccumulatedGain} /></> : "—"}
         </div>
@@ -251,12 +257,12 @@ function SummaryCards({ summary }: { summary: GroupSummary }) {
         )}
       </div>
       <div style={{ ...card, textAlign: "center" }}>
-        <div style={{ fontSize: 11, color: "#9ca3af", marginBottom: 4 }}>Current value</div>
+        <div style={{ fontSize: 11, color: "#9ca3af", marginBottom: 4 }}>{t("fixedDeposits.currentValue")}</div>
         <div style={{ fontSize: 20, fontWeight: 700, color: "#7c3aed" }}>
           {<Money amount={summary.currentValue} />}
         </div>
         {!summary.hasRealData && (
-          <div style={{ fontSize: 10, color: "#9ca3af", marginTop: 2 }}>No real data yet</div>
+          <div style={{ fontSize: 10, color: "#9ca3af", marginTop: 2 }}>{t("fixedDeposits.noRealDataYet")}</div>
         )}
       </div>
     </div>
@@ -264,15 +270,18 @@ function SummaryCards({ summary }: { summary: GroupSummary }) {
 }
 
 function CyclesChart({ cycles }: { cycles: FixedDeposit[] }) {
+  const { t } = useTranslation();
+  const totalValueLabel = t("fixedDeposits.totalValue");
+  const accumulatedCapitalLabel = t("fixedDeposits.accumulatedCapital");
   const sorted = [...cycles].sort((a, b) => parseLocalDate(a.startDate).getTime() - parseLocalDate(b.startDate).getTime());
   let cumInvested = 0;
   const data = sorted.map((c, i) => {
     cumInvested += c.capitalAdded;
     const value = isActive(c) ? c.capital : c.capital + (c.earnedInterest ?? 0);
     return {
-      name: `Cycle ${i + 1}`,
-      "Accumulated capital": cumInvested,
-      "Total value": value,
+      name: t("fixedDeposits.cycleLabel", { n: i + 1 }),
+      [accumulatedCapitalLabel]: cumInvested,
+      [totalValueLabel]: value,
     };
   });
 
@@ -280,15 +289,15 @@ function CyclesChart({ cycles }: { cycles: FixedDeposit[] }) {
 
   return (
     <div style={{ ...card, marginBottom: 20 }}>
-      <div style={{ fontSize: 13, fontWeight: 600, color: "#374151", marginBottom: 12 }}>CDT Evolution</div>
+      <div style={{ fontSize: 13, fontWeight: 600, color: "#374151", marginBottom: 12 }}>{t("fixedDeposits.cdtEvolution")}</div>
       <ResponsiveContainer width="100%" height={180}>
         <LineChart data={data}>
           <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
           <XAxis dataKey="name" tick={{ fontSize: 11 }} />
           <YAxis tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} tick={{ fontSize: 11 }} />
           <Tooltip formatter={(v) => fmt(Number(v))} />
-          <Line type="monotone" dataKey="Total value" stroke="#7c3aed" strokeWidth={2} dot />
-          <Line type="monotone" dataKey="Accumulated capital" stroke="#9ca3af" strokeWidth={1.5} strokeDasharray="4 4" dot={false} />
+          <Line type="monotone" dataKey={totalValueLabel} stroke="#7c3aed" strokeWidth={2} dot />
+          <Line type="monotone" dataKey={accumulatedCapitalLabel} stroke="#9ca3af" strokeWidth={1.5} strokeDasharray="4 4" dot={false} />
         </LineChart>
       </ResponsiveContainer>
     </div>
@@ -298,6 +307,7 @@ function CyclesChart({ cycles }: { cycles: FixedDeposit[] }) {
 // ── Cycle Monthly History ─────────────────────────────────────────────
 
 function CycleMonthlyHistory({ cycle }: { cycle: FixedDeposit }) {
+  const { t } = useTranslation();
   const { data: snapshots = [] } = useFixedDepositSnapshots(cycle.id);
   const upsertMut = useUpsertFixedDepositSnapshot();
   const deleteMut = useDeleteFixedDepositSnapshot();
@@ -323,7 +333,7 @@ function CycleMonthlyHistory({ cycle }: { cycle: FixedDeposit }) {
     <table style={{ width: "100%", borderCollapse: "collapse" }}>
       <thead>
         <tr>
-          {["Date", "Day", "Projection", "Real gain", "Accumulated real gain", "% return", ""].map(h => (
+          {[t("fixedDeposits.colDate"), t("fixedDeposits.colDay"), t("fixedDeposits.colProjection"), t("fixedDeposits.colRealGain"), t("fixedDeposits.accumulatedRealGain"), t("fixedDeposits.colPctReturn"), ""].map(h => (
             <th key={h} style={{ padding: "6px 10px", textAlign: "left", fontSize: 11, color: "#9ca3af", fontWeight: 600 }}>{h}</th>
           ))}
         </tr>
@@ -373,6 +383,7 @@ interface MonthRowProps {
 }
 
 function MonthRow({ pt, capital, snap, allSnaps, onSave, onDelete, saving }: MonthRowProps) {
+  const { t } = useTranslation();
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(String(snap?.gain ?? ""));
 
@@ -394,12 +405,12 @@ function MonthRow({ pt, capital, snap, allSnaps, onSave, onDelete, saving }: Mon
       {/* Fecha */}
       <td style={{ padding: "7px 10px", fontSize: 12, fontWeight: 500 }}>
         {pt.label}
-        {pt.isStart && <span style={{ fontSize: 10, color: "#7c3aed", marginLeft: 4, fontWeight: 600 }}>start</span>}
-        {pt.isEnd && <span style={{ fontSize: 10, color: "#f59e0b", marginLeft: 4, fontWeight: 600 }}>ends</span>}
+        {pt.isStart && <span style={{ fontSize: 10, color: "#7c3aed", marginLeft: 4, fontWeight: 600 }}>{t("fixedDeposits.startBadge")}</span>}
+        {pt.isEnd && <span style={{ fontSize: 10, color: "#f59e0b", marginLeft: 4, fontWeight: 600 }}>{t("fixedDeposits.endsBadge")}</span>}
       </td>
       {/* Días desde inicio */}
       <td style={{ padding: "7px 10px", fontSize: 12, color: "#6b7280" }}>
-        {pt.daysElapsed === 0 ? "—" : `day ${pt.daysElapsed}`}
+        {pt.daysElapsed === 0 ? "—" : t("fixedDeposits.dayCount", { n: pt.daysElapsed })}
       </td>
       {/* Proyección: capital + ganancia proyectada acumulada */}
       <td style={{ padding: "7px 10px", fontSize: 12, color: "#6b7280" }}>{<Money amount={pt.projectedValue} />}</td>
@@ -413,7 +424,7 @@ function MonthRow({ pt, capital, snap, allSnaps, onSave, onDelete, saving }: Mon
               onChange={e => setValue(e.target.value)}
               onKeyDown={e => { if (e.key === "Enter") handleSave(); if (e.key === "Escape") setEditing(false); }}
               style={{ ...input, width: 110, padding: "3px 6px" }}
-              placeholder="Current CDT value"
+              placeholder={t("fixedDeposits.currentCdtValuePlaceholder")}
               autoFocus
             />
             <button onClick={handleSave} disabled={saving} style={{ ...btn("#16a34a"), padding: "3px 8px", fontSize: 12 }}>✓</button>
@@ -424,19 +435,19 @@ function MonthRow({ pt, capital, snap, allSnaps, onSave, onDelete, saving }: Mon
             <span
               style={{ fontWeight: 600, cursor: "pointer", borderBottom: "1px dashed #374151" }}
               onClick={() => { setValue(String(snap.gain)); setEditing(true); }}
-              title="Click to edit"
+              title={t("fixedDeposits.clickToEdit")}
             >
               {<Money amount={realValue} />}
             </span>
             <button
               onClick={() => onDelete(pt.day, pt.month, pt.year)}
               style={{ background: "none", borderTop: "none", borderLeft: "none", borderRight: "none", borderBottom: "none", cursor: "pointer", color: "#d1d5db", fontSize: 11, padding: 0 }}
-              title="Delete"
+              title={t("fixedDeposits.deleteWord")}
             >✕</button>
           </div>
         ) : (
           <button onClick={() => { setValue(""); setEditing(true); }} style={{ ...ghost, padding: "3px 10px", fontSize: 11 }}>
-            + Add
+            {t("fixedDeposits.addButton")}
           </button>
         )}
       </td>
@@ -472,6 +483,7 @@ interface CycleRowProps {
 }
 
 function CycleRow({ cycle, index, onSaveInterest, onDelete }: CycleRowProps) {
+  const { t } = useTranslation();
   const active = isActive(cycle);
   const expected = calcExpectedValue(cycle.capital, cycle.interestRate, cycle.term, cycle.termUnit);
   const isExpired = parseLocalDate(cycle.endDate) < new Date();
@@ -495,17 +507,17 @@ function CycleRow({ cycle, index, onSaveInterest, onDelete }: CycleRowProps) {
 
   const statusBg = active ? (isExpired ? "#fef3c7" : "#dcfce7") : "#f3f4f6";
   const statusColor = active ? (isExpired ? "#92400e" : "#166534") : "#6b7280";
-  const statusText = active ? (isExpired ? "Expired" : "Active") : "Closed";
+  const statusText = active ? (isExpired ? t("fixedDeposits.expired") : t("fixedDeposits.active")) : t("fixedDeposits.closed");
 
   return (
     <>
     <tr style={{ borderBottom: "1px solid #f3f4f6" }}>
-      <td style={{ padding: "10px 12px", fontSize: 13, color: "#6b7280" }}>Cycle {index + 1}</td>
+      <td style={{ padding: "10px 12px", fontSize: 13, color: "#6b7280" }}>{t("fixedDeposits.cycleLabel", { n: index + 1 })}</td>
       <td style={{ padding: "10px 12px", fontSize: 13, fontWeight: 500 }}>{<Money amount={cycle.capital} />}</td>
       <td style={{ padding: "10px 12px", fontSize: 13, color: "#2563eb" }}>
         {index === 0 ? <Money amount={cycle.capitalAdded} /> : <>+<Money amount={cycle.capitalAdded} /></>}
       </td>
-      <td style={{ padding: "10px 12px", fontSize: 13 }}>{cycle.interestRate}% EA · {termLabel(cycle.term, cycle.termUnit)}</td>
+      <td style={{ padding: "10px 12px", fontSize: 13 }}>{cycle.interestRate}% EA · {termLabel(t, cycle.term, cycle.termUnit)}</td>
       <td style={{ padding: "10px 12px", fontSize: 13 }}>{formatDate(cycle.startDate)}</td>
       <td style={{ padding: "10px 12px", fontSize: 13 }}>{formatDate(cycle.endDate)}</td>
       <td style={{ padding: "10px 12px", fontSize: 13, color: "#16a34a", fontWeight: 500 }}>
@@ -529,7 +541,7 @@ function CycleRow({ cycle, index, onSaveInterest, onDelete }: CycleRowProps) {
           <span
             style={{ cursor: "pointer", borderBottom: "1px dashed #16a34a" }}
             onClick={() => { setEditValue(String(cycle.earnedInterest ?? 0)); setEditing(true); }}
-            title="Click to edit"
+            title={t("fixedDeposits.clickToEdit")}
           >
             {<Money amount={cycle.earnedInterest ?? 0} />}
           </span>
@@ -547,19 +559,19 @@ function CycleRow({ cycle, index, onSaveInterest, onDelete }: CycleRowProps) {
               onClick={() => onSaveInterest(cycle.id, expected - cycle.capital)}
               style={{ ...btn("#16a34a"), padding: "4px 10px", fontSize: 12 }}
             >
-              Close
+              {t("fixedDeposits.closeButton")}
             </button>
           )}
           {!active && (
             <button onClick={handleReopen} style={{ ...ghost, padding: "4px 10px", fontSize: 12 }}>
-              Reopen
+              {t("fixedDeposits.reopen")}
             </button>
           )}
           <button
             onClick={() => setShowHistory(h => !h)}
             style={{ ...ghost, padding: "4px 10px", fontSize: 12 }}
           >
-            {showHistory ? "▲" : "▼"} History
+            {showHistory ? "▲" : "▼"} {t("fixedDeposits.historyToggle")}
           </button>
           <button
             onClick={() => onDelete(cycle.id)}
@@ -573,7 +585,7 @@ function CycleRow({ cycle, index, onSaveInterest, onDelete }: CycleRowProps) {
         <td colSpan={9} style={{ padding: 0, background: "#f9fafb" }}>
           <div style={{ padding: "12px 24px" }}>
             <div style={{ fontSize: 12, fontWeight: 600, color: "#6b7280", marginBottom: 8 }}>
-              Monthly history — Cycle {index + 1}
+              {t("fixedDeposits.monthlyHistoryTitle", { n: index + 1 })}
             </div>
             <CycleMonthlyHistory cycle={cycle} />
           </div>
@@ -596,6 +608,7 @@ interface NewGroupFormProps {
 }
 
 function NewGroupForm({ onSave, onCancel, loading }: NewGroupFormProps) {
+  const { t } = useTranslation();
   const today = new Date().toISOString().split("T")[0];
   const [name, setName] = useState("");
   const [entity, setEntity] = useState("");
@@ -626,27 +639,27 @@ function NewGroupForm({ onSave, onCancel, loading }: NewGroupFormProps) {
 
   return (
     <div style={{ ...card, marginBottom: 16 }}>
-      <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 14, color: "#374151" }}>New CDT</div>
+      <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 14, color: "#374151" }}>{t("fixedDeposits.newCdtTitle")}</div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 12 }}>
         <div>
-          <span style={label}>Name</span>
+          <span style={label}>{t("fixedDeposits.nameLabel")}</span>
           <input style={input} placeholder="CDT Bancolombia" value={name} onChange={e => setName(e.target.value)} />
         </div>
         <div>
-          <span style={label}>Entity</span>
+          <span style={label}>{t("fixedDeposits.entityLabel")}</span>
           <input style={input} placeholder="Bancolombia" value={entity} onChange={e => setEntity(e.target.value)} />
         </div>
         <div>
-          <span style={label}>Initial capital ($)</span>
+          <span style={label}>{t("fixedDeposits.initialCapitalCOP")}</span>
           <input style={input} placeholder="1.000.000" value={capital}
             onChange={e => setCapital(e.target.value.replace(/\D/g, "").replace(/\B(?=(\d{3})+(?!\d))/g, "."))} />
         </div>
         <div>
-          <span style={label}>EA Rate (%)</span>
+          <span style={label}>{t("fixedDeposits.eaRate")}</span>
           <input style={input} type="number" placeholder="12.5" value={rate} onChange={e => setRate(e.target.value)} />
         </div>
         <div>
-          <span style={label}>Term</span>
+          <span style={label}>{t("fixedDeposits.termLabelWord")}</span>
           <div style={{ display: "flex", gap: 6 }}>
             <input style={{ ...input, flex: 1 }} type="number" min={1} value={term} onChange={e => setTerm(e.target.value)} />
             <select
@@ -658,30 +671,30 @@ function NewGroupForm({ onSave, onCancel, loading }: NewGroupFormProps) {
               }}
               style={{ ...input, width: 90 }}
             >
-              <option value="DAYS">Days</option>
-              <option value="MONTHS">Months</option>
+              <option value="DAYS">{t("fixedDeposits.daysOption")}</option>
+              <option value="MONTHS">{t("fixedDeposits.monthsOption")}</option>
             </select>
           </div>
         </div>
         <div>
-          <span style={label}>Start date</span>
+          <span style={label}>{t("fixedDeposits.startDateLabel")}</span>
           <input style={input} type="date" value={startDate} onChange={e => setStartDate(e.target.value)} />
         </div>
       </div>
       {endDate && (
         <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 12 }}>
-          Maturity: <strong>{formatDate(endDate)}</strong>
+          {t("fixedDeposits.maturityLabel")} <strong>{formatDate(endDate)}</strong>
           {expectedValue !== null && <>
-            {" "}· Expected value: <strong style={{ color: "#16a34a" }}>{<Money amount={expectedValue} />}</strong>
-            {" "}· Estimated interest: <strong style={{ color: "#16a34a" }}>{<Money amount={expectedValue - Number(capital.replace(/\D/g, ""))} />}</strong>
+            {" "}· {t("fixedDeposits.expectedValueLabel")} <strong style={{ color: "#16a34a" }}>{<Money amount={expectedValue} />}</strong>
+            {" "}· {t("fixedDeposits.estimatedInterestLabel")} <strong style={{ color: "#16a34a" }}>{<Money amount={expectedValue - Number(capital.replace(/\D/g, ""))} />}</strong>
           </>}
         </div>
       )}
       <div style={{ display: "flex", gap: 8 }}>
         <button onClick={handleSubmit} style={btn()} disabled={loading}>
-          {loading ? "Saving…" : "Save"}
+          {loading ? t("fixedDeposits.saving") : t("fixedDeposits.save")}
         </button>
-        <button onClick={onCancel} style={ghost}>Cancel</button>
+        <button onClick={onCancel} style={ghost}>{t("fixedDeposits.cancel")}</button>
       </div>
     </div>
   );
@@ -701,6 +714,7 @@ interface RenewFormProps {
 }
 
 function RenewForm({ group, prevCycle, onSave, onCancel, loading }: RenewFormProps) {
+  const { t } = useTranslation();
   const sortedSnaps = [...(prevCycle.snapshots ?? [])].sort(compareSnapshots);
   const lastSnap = sortedSnaps.at(-1);
   const hasRealSnaps = sortedSnaps.length > 0;
@@ -738,26 +752,26 @@ function RenewForm({ group, prevCycle, onSave, onCancel, loading }: RenewFormPro
   return (
     <div style={{ ...card, marginBottom: 16, borderColor: "#ddd6fe" }}>
       <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 14, color: "#374151" }}>
-        Renew CDT — {group.name}
+        {t("fixedDeposits.renewCdtTitle", { name: group.name })}
       </div>
       <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 12 }}>
-        Previous cycle value: <strong>{<Money amount={prevValue} />}</strong>
+        {t("fixedDeposits.previousCycleValue")} <strong>{<Money amount={prevValue} />}</strong>
         <span style={{ marginLeft: 6, color: "#9ca3af" }}>
-          (<Money amount={prevCycle.capital} /> capital{hasRealSnaps ? <> + <Money amount={realAccGain} /> real gain</> : prevCycle.earnedInterest ? <> + <Money amount={prevCycle.earnedInterest} /> interest</> : " no real data"})
+          (<Money amount={prevCycle.capital} /> {t("fixedDeposits.capitalWord")}{hasRealSnaps ? <> + <Money amount={realAccGain} /> {t("fixedDeposits.realGainWord")}</> : prevCycle.earnedInterest ? <> + <Money amount={prevCycle.earnedInterest} /> {t("fixedDeposits.interestWord")}</> : ` ${t("fixedDeposits.noRealData")}`})
         </span>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 12, marginBottom: 12 }}>
         <div>
-          <span style={label}>Additional capital ($)</span>
+          <span style={label}>{t("fixedDeposits.additionalCapital")}</span>
           <input style={input} placeholder="0" value={extraCapital}
             onChange={e => setExtraCapital(e.target.value.replace(/\D/g, "").replace(/\B(?=(\d{3})+(?!\d))/g, "."))} />
         </div>
         <div>
-          <span style={label}>EA Rate (%)</span>
+          <span style={label}>{t("fixedDeposits.eaRate")}</span>
           <input style={input} type="number" value={rate} onChange={e => setRate(e.target.value)} />
         </div>
         <div>
-          <span style={label}>Term</span>
+          <span style={label}>{t("fixedDeposits.termLabelWord")}</span>
           <div style={{ display: "flex", gap: 6 }}>
             <input style={{ ...input, flex: 1 }} type="number" min={1} value={term} onChange={e => setTerm(e.target.value)} />
             <select
@@ -765,27 +779,27 @@ function RenewForm({ group, prevCycle, onSave, onCancel, loading }: RenewFormPro
               onChange={e => setTermUnit(e.target.value as TermUnit)}
               style={{ ...input, width: 90 }}
             >
-              <option value="DAYS">Days</option>
-              <option value="MONTHS">Months</option>
+              <option value="DAYS">{t("fixedDeposits.daysOption")}</option>
+              <option value="MONTHS">{t("fixedDeposits.monthsOption")}</option>
             </select>
           </div>
         </div>
         <div>
-          <span style={label}>Start date</span>
+          <span style={label}>{t("fixedDeposits.startDateLabel")}</span>
           <input style={input} type="date" value={startDate} onChange={e => setStartDate(e.target.value)} />
         </div>
       </div>
       <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 12 }}>
-        New capital: <strong>{<Money amount={newCapital} />}</strong>
+        {t("fixedDeposits.newCapitalLabel")} <strong>{<Money amount={newCapital} />}</strong>
         {capitalAdded > 0 && <span> ({<Money amount={prevValue} />} + {<Money amount={capitalAdded} />})</span>}
-        {" "}· Expected value: <strong style={{ color: "#16a34a" }}>{<Money amount={expectedValue} />}</strong>
-        {endDate && <>{" "}· Maturity: <strong>{formatDate(endDate)}</strong></>}
+        {" "}· {t("fixedDeposits.expectedValueLabel")} <strong style={{ color: "#16a34a" }}>{<Money amount={expectedValue} />}</strong>
+        {endDate && <>{" "}· {t("fixedDeposits.maturityLabel")} <strong>{formatDate(endDate)}</strong></>}
       </div>
       <div style={{ display: "flex", gap: 8 }}>
         <button onClick={handleSubmit} style={btn()} disabled={loading}>
-          {loading ? "Saving…" : "Renew"}
+          {loading ? t("fixedDeposits.saving") : t("fixedDeposits.renew")}
         </button>
-        <button onClick={onCancel} style={ghost}>Cancel</button>
+        <button onClick={onCancel} style={ghost}>{t("fixedDeposits.cancel")}</button>
       </div>
     </div>
   );
@@ -801,24 +815,25 @@ interface CloseCycleFormProps {
 }
 
 function CloseCycleForm({ cycle, onSave, onCancel, loading }: CloseCycleFormProps) {
+  const { t } = useTranslation();
   const estimated = calcExpectedValue(cycle.capital, cycle.interestRate, cycle.term, cycle.termUnit) - cycle.capital;
   const [earned, setEarned] = useState(String(estimated));
 
   return (
     <div style={{ ...card, marginBottom: 16, borderColor: "#bbf7d0" }}>
-      <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10, color: "#374151" }}>Close cycle</div>
+      <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10, color: "#374151" }}>{t("fixedDeposits.closeCycleTitle")}</div>
       <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 10 }}>
-        Enter the actual interest earned in this cycle (estimated: {<Money amount={estimated} />}).
+        {t("fixedDeposits.enterActualInterest")} {<Money amount={estimated} />}).
       </div>
       <div style={{ display: "flex", gap: 10, alignItems: "flex-end" }}>
         <div style={{ width: 200 }}>
-          <span style={label}>Earned interest ($)</span>
+          <span style={label}>{t("fixedDeposits.earnedInterestCOP")}</span>
           <input style={input} type="number" value={earned} onChange={e => setEarned(e.target.value)} />
         </div>
         <button onClick={() => onSave(Number(earned))} style={btn("#16a34a")} disabled={loading}>
-          {loading ? "Saving…" : "Confirm"}
+          {loading ? t("fixedDeposits.saving") : t("fixedDeposits.confirm")}
         </button>
-        <button onClick={onCancel} style={ghost}>Cancel</button>
+        <button onClick={onCancel} style={ghost}>{t("fixedDeposits.cancel")}</button>
       </div>
     </div>
   );
@@ -832,6 +847,7 @@ interface GroupDetailProps {
 }
 
 function GroupDetail({ group, onBack }: GroupDetailProps) {
+  const { t } = useTranslation();
   const [showRenew, setShowRenew] = useState(false);
 
   const addCycleMut = useAddFixedDepositCycle();
@@ -859,14 +875,14 @@ function GroupDetail({ group, onBack }: GroupDetailProps) {
   return (
     <div>
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
-        <button onClick={onBack} style={ghost}>← Back</button>
+        <button onClick={onBack} style={ghost}>{t("fixedDeposits.back")}</button>
         <div>
           <div style={{ fontSize: 16, fontWeight: 700, color: "#111827" }}>{group.name}</div>
           <div style={{ fontSize: 12, color: "#9ca3af" }}>{group.entity}</div>
         </div>
         {!showRenew && (
           <button onClick={() => setShowRenew(true)} style={{ ...btn(), marginLeft: "auto" }}>
-            + Add cycle
+            {t("fixedDeposits.addCycle")}
           </button>
         )}
       </div>
@@ -885,11 +901,11 @@ function GroupDetail({ group, onBack }: GroupDetailProps) {
       )}
 
       <div style={card}>
-        <div style={{ fontSize: 13, fontWeight: 600, color: "#374151", marginBottom: 12 }}>Cycle history</div>
+        <div style={{ fontSize: 13, fontWeight: 600, color: "#374151", marginBottom: 12 }}>{t("fixedDeposits.cycleHistoryTitle")}</div>
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead>
             <tr style={{ background: "#f9fafb" }}>
-              {["Cycle", "Capital", "New contribution", "Rate", "Start", "Maturity", "Earned interest", "Status", ""].map(h => (
+              {[t("fixedDeposits.colCycle"), t("fixedDeposits.colCapital"), t("fixedDeposits.colNewContribution"), t("fixedDeposits.colRate"), t("fixedDeposits.colStart"), t("fixedDeposits.colMaturity"), t("fixedDeposits.colEarnedInterest"), t("fixedDeposits.colStatus"), ""].map(h => (
                 <th key={h} style={{ padding: "8px 12px", textAlign: "left", fontSize: 11, color: "#9ca3af", fontWeight: 600 }}>{h}</th>
               ))}
             </tr>
@@ -914,6 +930,7 @@ function GroupDetail({ group, onBack }: GroupDetailProps) {
 // ── Main Component ────────────────────────────────────────────────────
 
 export default function FixedDepositsTab() {
+  const { t } = useTranslation();
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [showNewForm, setShowNewForm] = useState(false);
 
@@ -930,8 +947,8 @@ export default function FixedDepositsTab() {
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-        <div style={{ fontSize: 14, fontWeight: 600, color: "#374151" }}>CDTs</div>
-        <button onClick={() => setShowNewForm(true)} style={btn()}>+ New CDT</button>
+        <div style={{ fontSize: 14, fontWeight: 600, color: "#374151" }}>{t("fixedDeposits.cdtsTitle")}</div>
+        <button onClick={() => setShowNewForm(true)} style={btn()}>{t("fixedDeposits.newCdtButton")}</button>
       </div>
 
       {showNewForm && (
@@ -945,11 +962,11 @@ export default function FixedDepositsTab() {
         />
       )}
 
-      {isLoading && <div style={{ color: "#9ca3af", fontSize: 13 }}>Loading…</div>}
+      {isLoading && <div style={{ color: "#9ca3af", fontSize: 13 }}>{t("fixedDeposits.loading")}</div>}
 
       {!isLoading && groups.length === 0 && !showNewForm && (
         <div style={{ textAlign: "center", padding: "40px 0", color: "#9ca3af", fontSize: 13 }}>
-          No CDTs registered yet. Create your first one.
+          {t("fixedDeposits.noCdtsYet")}
         </div>
       )}
 
@@ -968,24 +985,24 @@ export default function FixedDepositsTab() {
             >
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 14, fontWeight: 600, color: "#111827" }}>{group.name}</div>
-                <div style={{ fontSize: 12, color: "#9ca3af" }}>{group.entity} · {group.cycles.length} cycle{group.cycles.length !== 1 ? "s" : ""}</div>
+                <div style={{ fontSize: 12, color: "#9ca3af" }}>{group.entity} · {group.cycles.length} {t("fixedDeposits.cycleWord")}{group.cycles.length !== 1 ? "s" : ""}</div>
               </div>
               <div style={{ textAlign: "right" }}>
-                <div style={{ fontSize: 11, color: "#9ca3af" }}>Total invested</div>
+                <div style={{ fontSize: 11, color: "#9ca3af" }}>{t("fixedDeposits.totalInvested")}</div>
                 <div style={{ fontSize: 15, fontWeight: 700, color: "#2563eb" }}>{<Money amount={summary.totalInvested} />}</div>
               </div>
               <div style={{ textAlign: "right" }}>
-                <div style={{ fontSize: 11, color: "#9ca3af" }}>Current value</div>
+                <div style={{ fontSize: 11, color: "#9ca3af" }}>{t("fixedDeposits.currentValue")}</div>
                 <div style={{ fontSize: 15, fontWeight: 700, color: "#7c3aed" }}>{<Money amount={summary.currentValue} />}</div>
               </div>
               <div style={{ textAlign: "right" }}>
-                <div style={{ fontSize: 11, color: "#9ca3af" }}>Accumulated real gain</div>
+                <div style={{ fontSize: 11, color: "#9ca3af" }}>{t("fixedDeposits.accumulatedRealGain")}</div>
                 <div style={{ fontSize: 15, fontWeight: 700, color: "#16a34a" }}>
                   {summary.hasRealData ? <>+<Money amount={summary.realAccumulatedGain} /></> : "—"}
                 </div>
               </div>
               <div style={{ textAlign: "right" }}>
-                <div style={{ fontSize: 11, color: "#9ca3af" }}>% gain</div>
+                <div style={{ fontSize: 11, color: "#9ca3af" }}>{t("fixedDeposits.pctGain")}</div>
                 <div style={{ fontSize: 15, fontWeight: 700 }}>
                   {summary.hasRealData ? (
                     <span style={{
@@ -1005,7 +1022,7 @@ export default function FixedDepositsTab() {
                 background: active ? (isExpired ? "#fef3c7" : "#dcfce7") : "#f3f4f6",
                 color: active ? (isExpired ? "#92400e" : "#166534") : "#6b7280",
               }}>
-                {active ? (isExpired ? "Expired" : "Active") : group.cycles.length === 0 ? "No cycles" : "Closed"}
+                {active ? (isExpired ? t("fixedDeposits.expired") : t("fixedDeposits.active")) : group.cycles.length === 0 ? t("fixedDeposits.noCycles") : t("fixedDeposits.closed")}
               </span>
               <button
                 onClick={e => { e.stopPropagation(); deleteGroupMut.mutate(group.id); }}

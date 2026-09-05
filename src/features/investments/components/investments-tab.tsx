@@ -30,12 +30,14 @@ import { fmt, gainPc } from "@/lib/formatters";
 import Badge from "@/components/ui/badge";
 import Money from "@/components/ui/money";
 import EditableCell from "@/components/ui/editable-cell";
+import { useTranslation } from "@/hooks/use-translation";
 import StockTransactionsTab from "./stock-transactions-tab";
 import FixedDepositsTab from "./fixed-deposits-tab";
 import FundsTab from "./funds-tab";
 import CryptoTab from "./crypto-tab";
 
 export default function InvestmentsTab() {
+  const { t } = useTranslation();
   const [subTab, setSubTab] = useState<"summary" | "funds" | "transactions" | "cdts" | "crypto">("summary");
   const { year, setYear, investmentMonth, setInvestmentMonth } = useDashboardStore();
 
@@ -65,7 +67,13 @@ export default function InvestmentsTab() {
               fontSize: 13,
             }}
           >
-            {{ summary: "Summary", funds: "Funds", transactions: "Stock Transactions", cdts: "CDTs", crypto: "Crypto" }[tab]}
+            {{
+              summary: t("investmentsOverview.subTabSummary"),
+              funds: t("investmentsOverview.subTabFunds"),
+              transactions: t("investmentsOverview.subTabTransactions"),
+              cdts: t("investmentsOverview.subTabCdts"),
+              crypto: t("investmentsOverview.subTabCrypto"),
+            }[tab]}
           </button>
         ))}
       </div>
@@ -117,6 +125,7 @@ function GainCell({ gain, pct }: { gain: number; pct: number }) {
 function CategoryBlock({ title, accentColor, items, showLabel }: {
   title: string; accentColor: string; items: CategoryItem[]; showLabel?: boolean;
 }) {
+  const { t } = useTranslation();
   const totalInvested = items.reduce((s, i) => s + i.invested, 0);
   const withValue = items.filter(i => i.currentValue !== null && i.currentValue > 0);
   const totalCurrent = withValue.length > 0 ? withValue.reduce((s, i) => s + (i.currentValue ?? 0), 0) : null;
@@ -132,28 +141,28 @@ function CategoryBlock({ title, accentColor, items, showLabel }: {
       <div style={{ background: accentColor + "12", borderBottom: `2px solid ${accentColor}40`, padding: "10px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
         <span style={{ fontWeight: 700, fontSize: 14, color: "#1f2937" }}>{title}</span>
         <div style={{ display: "flex", gap: 20, fontSize: 12, flexWrap: "wrap" }}>
-          <span style={{ color: "#6b7280" }}>Invested: <strong style={{ color: accentColor }}>{<Money amount={totalInvested} />}</strong></span>
-          <span style={{ color: "#6b7280" }}>Current Value: <strong style={{ color: "#059669" }}>{totalCurrent !== null ? <Money amount={totalCurrent} /> : "—"}</strong></span>
-          {gain !== null && <span style={{ color: "#6b7280" }}>Gain/Loss: <GainCell gain={gain} pct={gainPct} /></span>}
+          <span style={{ color: "#6b7280" }}>{t("investmentsOverview.investedInline")} <strong style={{ color: accentColor }}>{<Money amount={totalInvested} />}</strong></span>
+          <span style={{ color: "#6b7280" }}>{t("investmentsOverview.currentValueInline")} <strong style={{ color: "#059669" }}>{totalCurrent !== null ? <Money amount={totalCurrent} /> : "—"}</strong></span>
+          {gain !== null && <span style={{ color: "#6b7280" }}>{t("investmentsOverview.gainLossInline")} <GainCell gain={gain} pct={gainPct} /></span>}
           {totalNet !== null && totalNetPct !== null && (
-            <span style={{ color: "#6b7280" }}>Net if sold: <GainCell gain={totalNet} pct={totalNetPct} /></span>
+            <span style={{ color: "#6b7280" }}>{t("investmentsOverview.netIfSoldInline")} <GainCell gain={totalNet} pct={totalNetPct} /></span>
           )}
         </div>
       </div>
       {items.length === 0 ? (
-        <div style={{ padding: "12px 16px", color: "#9ca3af", fontSize: 12 }}>No entries yet.</div>
+        <div style={{ padding: "12px 16px", color: "#9ca3af", fontSize: 12 }}>{t("investmentsOverview.noEntriesYet")}</div>
       ) : (
         <div style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
             <thead>
               <tr style={{ background: "#f9fafb" }}>
-                <th style={{ textAlign: "left", padding: "6px 16px", fontWeight: 600, color: "#6b7280" }}>Name</th>
-                {showLabel && <th style={{ textAlign: "left", padding: "6px 10px", fontWeight: 600, color: "#6b7280" }}>Type</th>}
-                <th style={{ textAlign: "right", padding: "6px 16px", fontWeight: 600, color: "#6b7280" }}>Invested</th>
-                <th style={{ textAlign: "right", padding: "6px 16px", fontWeight: 600, color: "#6b7280" }}>Current Value</th>
-                <th style={{ textAlign: "right", padding: "6px 16px", fontWeight: 600, color: "#6b7280" }}>Gain / Loss</th>
-                {hasSellComm && <th style={{ textAlign: "right", padding: "6px 16px", fontWeight: 600, color: "#dc2626" }}>Net if sold</th>}
-                <th style={{ textAlign: "right", padding: "6px 16px", fontWeight: 600, color: "#6b7280" }}>Growth %</th>
+                <th style={{ textAlign: "left", padding: "6px 16px", fontWeight: 600, color: "#6b7280" }}>{t("investmentsOverview.colName")}</th>
+                {showLabel && <th style={{ textAlign: "left", padding: "6px 10px", fontWeight: 600, color: "#6b7280" }}>{t("investmentsOverview.colType")}</th>}
+                <th style={{ textAlign: "right", padding: "6px 16px", fontWeight: 600, color: "#6b7280" }}>{t("investmentsOverview.colInvested")}</th>
+                <th style={{ textAlign: "right", padding: "6px 16px", fontWeight: 600, color: "#6b7280" }}>{t("investmentsOverview.colCurrentValue")}</th>
+                <th style={{ textAlign: "right", padding: "6px 16px", fontWeight: 600, color: "#6b7280" }}>{t("investmentsOverview.colGainLoss")}</th>
+                {hasSellComm && <th style={{ textAlign: "right", padding: "6px 16px", fontWeight: 600, color: "#dc2626" }}>{t("investmentsOverview.colNetIfSold")}</th>}
+                <th style={{ textAlign: "right", padding: "6px 16px", fontWeight: 600, color: "#6b7280" }}>{t("investmentsOverview.colGrowthPct")}</th>
               </tr>
             </thead>
             <tbody>
@@ -241,6 +250,7 @@ function SummaryContent({
   investmentMonth: number;
   setInvestmentMonth: (month: number) => void;
 }) {
+  const { t } = useTranslation();
   // Category summary data
   const { data: depositGroups = [] } = useFixedDepositGroups();
   const { data: allTxs = [] } = useStockTransactions();
@@ -381,10 +391,10 @@ function SummaryContent({
     () => dbStocks
       .filter(inv => !stockInvestmentIds.has(inv.id))
       .map((inv) => ({
-        id: inv.id, name: inv.name, type: inv.type?.name || "No Type",
+        id: inv.id, name: inv.name, type: inv.type?.name || t("investmentsOverview.noType"),
         color: inv.color, invested: inv.investedCapital,
       })),
-    [dbStocks, stockInvestmentIds]
+    [dbStocks, stockInvestmentIds, t]
   );
 
   const currentDate = new Date();
@@ -541,24 +551,24 @@ function SummaryContent({
   return (
     <>
       {/* Category summaries */}
-      <CategoryBlock title="CDTs" accentColor="#0891b2" items={cdtItems} showLabel />
-      <CategoryBlock title="Stock Transactions" accentColor="#7c3aed" items={stockItems} showLabel />
-      <CategoryBlock title="Funds" accentColor="#059669" items={fundItems} showLabel />
-      <CategoryBlock title="Crypto" accentColor="#f59e0b" items={cryptoItems} />
+      <CategoryBlock title={t("investmentsOverview.categoryCdts")} accentColor="#0891b2" items={cdtItems} showLabel />
+      <CategoryBlock title={t("investmentsOverview.categoryStockTransactions")} accentColor="#7c3aed" items={stockItems} showLabel />
+      <CategoryBlock title={t("investmentsOverview.categoryFunds")} accentColor="#059669" items={fundItems} showLabel />
+      <CategoryBlock title={t("investmentsOverview.categoryCrypto")} accentColor="#f59e0b" items={cryptoItems} />
 
       {/* Portfolio Evolution chart */}
       <div style={{ background: "#fff", borderRadius: 12, padding: 16, boxShadow: "0 1px 4px #0001" }}>
         {/* Header + date range */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, flexWrap: "wrap", gap: 8 }}>
-          <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700 }}>Portfolio Evolution</h3>
+          <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700 }}>{t("investmentsOverview.portfolioEvolutionTitle")}</h3>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <label style={{ fontSize: 11, fontWeight: 600, color: "#6b7280" }}>From:</label>
+              <label style={{ fontSize: 11, fontWeight: 600, color: "#6b7280" }}>{t("investmentsOverview.fromLabel")}</label>
               <input type="month" value={chartFrom} onChange={(e) => setChartFrom(e.target.value)}
                 style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 12 }} />
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <label style={{ fontSize: 11, fontWeight: 600, color: "#6b7280" }}>To:</label>
+              <label style={{ fontSize: 11, fontWeight: 600, color: "#6b7280" }}>{t("investmentsOverview.toLabel")}</label>
               <input type="month" value={chartTo} onChange={(e) => setChartTo(e.target.value)}
                 style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 12 }} />
             </div>
@@ -568,13 +578,13 @@ function SummaryContent({
         {/* Line toggles — category aggregates */}
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 6 }}>
           {[
-            { key: "Total Value", name: "Total Value", color: "#7c3aed" },
-            { key: "Invested",    name: "Invested",    color: "#9ca3af" },
+            { key: "Total Value", name: t("investmentsOverview.legendTotalValue"), color: "#7c3aed" },
+            { key: "Invested",    name: t("investmentsOverview.legendInvested"),    color: "#9ca3af" },
             ...invs.map((inv) => ({ key: inv.id, name: inv.name, color: inv.color })),
-            ...(Object.keys(txByInv).some(id => dbStocks.find(d => d.id === id)) ? [{ key: "Stocks Total", name: "Stocks", color: "#7c3aed" }] : []),
-            ...(funds.length > 0 ? [{ key: "Funds Total", name: "Funds", color: "#059669" }] : []),
-            ...(depositGroups.length > 0 ? [{ key: "CDTs", name: "CDTs", color: "#0891b2" }] : []),
-            ...(usdwPurchases.length > 0 || btcPurchases.length > 0 ? [{ key: "Crypto", name: "Crypto", color: "#f59e0b" }] : []),
+            ...(Object.keys(txByInv).some(id => dbStocks.find(d => d.id === id)) ? [{ key: "Stocks Total", name: t("investmentsOverview.legendStocks"), color: "#7c3aed" }] : []),
+            ...(funds.length > 0 ? [{ key: "Funds Total", name: t("investmentsOverview.legendFunds"), color: "#059669" }] : []),
+            ...(depositGroups.length > 0 ? [{ key: "CDTs", name: t("investmentsOverview.legendCdts"), color: "#0891b2" }] : []),
+            ...(usdwPurchases.length > 0 || btcPurchases.length > 0 ? [{ key: "Crypto", name: t("investmentsOverview.legendCrypto"), color: "#f59e0b" }] : []),
           ].map(({ key, name, color }) => {
             const visible = !hiddenLines.has(key);
             return (
@@ -594,7 +604,7 @@ function SummaryContent({
         {/* Line toggles — individual investments */}
         {(Object.keys(txByInv).length > 0 || funds.length > 0 || depositGroups.length > 0 || usdwPurchases.length > 0 || btcPurchases.length > 0) && (
           <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 14, alignItems: "center" }}>
-            <span style={{ fontSize: 10, color: "#9ca3af", marginRight: 4, fontWeight: 600 }}>Individual:</span>
+            <span style={{ fontSize: 10, color: "#9ca3af", marginRight: 4, fontWeight: 600 }}>{t("investmentsOverview.individualLabel")}</span>
             {[
               ...Object.keys(txByInv).flatMap(invId => {
                 const inv = dbStocks.find(d => d.id === invId);
@@ -625,7 +635,7 @@ function SummaryContent({
 
         {chartData.length === 0 ? (
           <p style={{ fontSize: 13, color: "#9ca3af", textAlign: "center", padding: "32px 0" }}>
-            No data in selected range.
+            {t("investmentsOverview.noDataInRange")}
           </p>
         ) : (
           <ResponsiveContainer width="100%" height={300}>
@@ -634,30 +644,30 @@ function SummaryContent({
               <XAxis dataKey="mes" tick={{ fontSize: 11 }} />
               <YAxis tick={{ fontSize: 10 }} tickFormatter={(v) => `${(Number(v) / 1e6).toFixed(1)}M`} />
               <Tooltip formatter={(v: unknown) => fmt(Number(v))} />
-              <Line type="monotone" dataKey="Total Value" name="Total Value"
+              <Line type="monotone" dataKey="Total Value" name={t("investmentsOverview.legendTotalValue")}
                 stroke="#7c3aed" strokeWidth={2} dot={{ r: 2 }}
                 hide={hiddenLines.has("Total Value")} />
-              <Line type="monotone" dataKey="Invested" name="Invested"
+              <Line type="monotone" dataKey="Invested" name={t("investmentsOverview.legendInvested")}
                 stroke="#9ca3af" strokeDasharray="5 5" strokeWidth={2} dot={{ r: 2 }}
                 hide={hiddenLines.has("Invested")} />
               {/* Category aggregate lines */}
               {Object.keys(txByInv).length > 0 && (
-                <Line type="monotone" dataKey="Stocks Total" name="Stocks"
+                <Line type="monotone" dataKey="Stocks Total" name={t("investmentsOverview.legendStocks")}
                   stroke="#7c3aed" strokeWidth={2} strokeDasharray="5 3" dot={{ r: 2 }}
                   hide={hiddenLines.has("Stocks Total")} />
               )}
               {funds.length > 0 && (
-                <Line type="monotone" dataKey="Funds Total" name="Funds"
+                <Line type="monotone" dataKey="Funds Total" name={t("investmentsOverview.legendFunds")}
                   stroke="#059669" strokeWidth={2} strokeDasharray="5 3" dot={{ r: 2 }}
                   hide={hiddenLines.has("Funds Total")} />
               )}
               {depositGroups.length > 0 && (
-                <Line type="monotone" dataKey="CDTs" name="CDTs"
+                <Line type="monotone" dataKey="CDTs" name={t("investmentsOverview.legendCdts")}
                   stroke="#0891b2" strokeWidth={2} strokeDasharray="5 3" dot={{ r: 2 }}
                   hide={hiddenLines.has("CDTs")} />
               )}
               {(usdwPurchases.length > 0 || btcPurchases.length > 0) && (
-                <Line type="monotone" dataKey="Crypto" name="Crypto"
+                <Line type="monotone" dataKey="Crypto" name={t("investmentsOverview.legendCrypto")}
                   stroke="#f59e0b" strokeWidth={2} strokeDasharray="5 3" dot={{ r: 2 }}
                   hide={hiddenLines.has("Crypto")} />
               )}

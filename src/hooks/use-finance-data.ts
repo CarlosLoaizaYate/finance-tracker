@@ -820,3 +820,112 @@ export function useUpdateCryptoCommissionRate() {
 }
 
 
+
+// ── Debts: Mortgage ───────────────────────────────────────────────────
+
+export interface MortgagePayment {
+  id: string;
+  mortgageId: string;
+  date: string;
+  principalPaid: number;
+  interestPaid: number;
+  interestCovered: number;
+  insurancePaid: number;
+  realBalance: number | null;
+  isExtra: boolean;
+  notes: string;
+  createdAt: string;
+}
+
+export interface Mortgage {
+  id: string;
+  name: string;
+  entity: string;
+  principal: number;
+  interestRate: number;
+  subsidizedRate: number | null;
+  subsidyRate: number | null;
+  subsidyEndDate: string | null;
+  isUvrIndexed: boolean;
+  termMonths: number;
+  startDate: string;
+  notes: string;
+  createdAt: string;
+  payments: MortgagePayment[];
+}
+
+export function useMortgages() {
+  return useQuery<Mortgage[]>({
+    queryKey: ["mortgages"],
+    queryFn: () => get("/api/mortgages"),
+  });
+}
+
+export function useAddMortgage() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: {
+      name: string; entity: string; principal: number; interestRate: number;
+      subsidizedRate?: number; subsidyRate?: number; subsidyEndDate?: string;
+      isUvrIndexed: boolean; termMonths: number; startDate: string; notes?: string;
+    }) => post("/api/mortgages", data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["mortgages"] }),
+  });
+}
+
+export function useDeleteMortgage() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => del(`/api/mortgages/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["mortgages"] }),
+  });
+}
+
+export function useMortgagePayments(mortgageId?: string) {
+  return useQuery<MortgagePayment[]>({
+    queryKey: ["mortgage-payments", mortgageId ?? "all"],
+    queryFn: () => {
+      const url = mortgageId ? `/api/mortgage-payments?mortgageId=${mortgageId}` : "/api/mortgage-payments";
+      return get(url);
+    },
+  });
+}
+
+export function useAddMortgagePayment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: {
+      mortgageId: string; date: string; principalPaid: number; interestPaid?: number;
+      interestCovered?: number; insurancePaid?: number; realBalance?: number; isExtra?: boolean; notes?: string;
+    }) => post("/api/mortgage-payments", data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["mortgage-payments"] });
+      qc.invalidateQueries({ queryKey: ["mortgages"] });
+    },
+  });
+}
+
+export function useUpdateMortgagePayment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: {
+      id: string; principalPaid?: number; interestPaid?: number;
+      interestCovered?: number; insurancePaid?: number; realBalance?: number; notes?: string;
+    }) => put(`/api/mortgage-payments/${data.id}`, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["mortgage-payments"] });
+      qc.invalidateQueries({ queryKey: ["mortgages"] });
+    },
+  });
+}
+
+export function useDeleteMortgagePayment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => del(`/api/mortgage-payments/${id}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["mortgage-payments"] });
+      qc.invalidateQueries({ queryKey: ["mortgages"] });
+    },
+  });
+}
