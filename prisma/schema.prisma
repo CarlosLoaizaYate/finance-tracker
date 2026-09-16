@@ -318,6 +318,7 @@ model MortgagePayment {
   previousBalance     Int?               // "Saldo Anterior" — the bank's reported opening balance for this statement's period, as printed on the statement (not derived from the prior row — the bank's own figure can differ slightly).
   previousBalanceDate DateTime?          // The date previousBalance is measured as-of, per the bank statement.
   isExtra          Boolean  @default(false) // true = extra principal payment outside the regular cuota
+  isEstimated      Boolean  @default(false) // true = principal/interest/insurance split is a trend-based guess, not yet confirmed by the real extracto. Cleared automatically once realBalance is set.
   notes            String   @default("")
   createdAt        DateTime @default(now())
   userId           String

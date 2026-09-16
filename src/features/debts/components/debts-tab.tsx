@@ -562,6 +562,12 @@ function MortgageCard({ mortgage, onDelete }: { mortgage: Mortgage; onDelete: ()
                             {p.isExtra
                               ? <span style={{ color: "#7c3aed", fontWeight: 600 }}>{t("debts.typeExtraPayment")}</span>
                               : <span style={{ color: "#6b7280" }}>{t("debts.typeInstallment")}</span>}
+                            {p.isEstimated && (
+                              <span style={{
+                                marginLeft: 6, fontSize: 10, fontWeight: 700, color: "#92400e",
+                                background: "#fef3c7", padding: "1px 6px", borderRadius: 10,
+                              }}>{t("debts.estimatedTag")}</span>
+                            )}
                           </td>
                           <td style={{ padding: "7px 10px" }}>
                             <EditableCell value={p.principalPaid} edited onChange={(v) => updatePaymentMut.mutate({ id: p.id, principalPaid: v })} />
@@ -600,7 +606,7 @@ function MortgageCard({ mortgage, onDelete }: { mortgage: Mortgage; onDelete: ()
                               </div>
                             )}
                           </td>
-                          <td style={{ padding: "7px 10px", color: /Estimad/.test(p.notes) ? "#d97706" : "#6b7280", fontStyle: /Estimad/.test(p.notes) ? "italic" : "normal" }}>{p.notes || "—"}</td>
+                          <td style={{ padding: "7px 10px", color: p.isEstimated ? "#d97706" : "#6b7280", fontStyle: p.isEstimated ? "italic" : "normal" }}>{p.notes || "—"}</td>
                           <td style={{ padding: "7px 10px", textAlign: "right" }}>
                             <button
                               onClick={() => deletePaymentMut.mutate(p.id)}

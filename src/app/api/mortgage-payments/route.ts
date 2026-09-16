@@ -38,6 +38,12 @@ export async function POST(req: NextRequest) {
       realBalance: body.realBalance ?? null,
       realBalanceDate: body.realBalanceDate ? new Date(body.realBalanceDate) : null,
       isExtra: !!body.isExtra,
+      // A regular installment added without a real bank balance in hand is
+      // presumed to be a same-day guess pending the extracto; abonos extra
+      // are always exact amounts the client chose, never estimated.
+      isEstimated: body.isEstimated !== undefined
+        ? !!body.isEstimated
+        : !body.isExtra && body.realBalance == null,
       notes: body.notes || "",
       userId: user.id,
     },

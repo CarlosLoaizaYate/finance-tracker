@@ -26,6 +26,14 @@ export async function PUT(
   if (body.previousBalance     !== undefined) data.previousBalance     = body.previousBalance;
   if (body.previousBalanceDate !== undefined) data.previousBalanceDate = body.previousBalanceDate ? new Date(body.previousBalanceDate) : null;
   if (body.notes            !== undefined) data.notes            = body.notes;
+  if (body.isEstimated      !== undefined) data.isEstimated      = !!body.isEstimated;
+
+  // Entering the bank's real balance is the signal that the real extracto
+  // is now in hand — clear the estimated flag unless the caller explicitly
+  // set it in this same request.
+  if (body.realBalance !== undefined && body.realBalance !== null && body.isEstimated === undefined) {
+    data.isEstimated = false;
+  }
 
   const payment = await prisma.mortgagePayment.update({ where: { id }, data });
   return NextResponse.json(payment);
