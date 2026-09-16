@@ -36,6 +36,7 @@ export async function POST(req: NextRequest) {
       interestCovered: body.interestCovered ?? 0,
       insurancePaid: body.insurancePaid ?? 0,
       realBalance: body.realBalance ?? null,
+      realBalanceDate: body.realBalanceDate ? new Date(body.realBalanceDate) : null,
       isExtra: !!body.isExtra,
       notes: body.notes || "",
       userId: user.id,

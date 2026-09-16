@@ -94,16 +94,20 @@ function computeMortgageSummary(mortgage: Mortgage) {
   const pctPaidOff = mortgage.principal > 0 ? (totalPrincipalPaid / mortgage.principal) * 100 : 0;
   const regularCuotasPaid = mortgage.payments.filter(p => !p.isExtra).length;
 
+  // Sorted/shown by realBalanceDate (the bank's own cutoff date for that
+  // balance) when known, not `date` (the payment transfer date) — those two
+  // dates can be a full period apart, and the cutoff date is what the real
+  // balance is actually "as of".
   const withRealBalance = [...mortgage.payments]
     .filter(p => p.realBalance != null)
-    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    .sort((a, b) => new Date(b.realBalanceDate ?? b.date).getTime() - new Date(a.realBalanceDate ?? a.date).getTime());
   const lastVerified = withRealBalance[0] ?? null;
 
   return {
     totalPrincipalPaid, totalInterestPaid, totalInterestCovered, totalInsurancePaid, totalPaid,
     outstandingBalance, pctPaidOff, regularCuotasPaid,
     lastVerifiedBalance: lastVerified?.realBalance ?? null,
-    lastVerifiedDate: lastVerified?.date ?? null,
+    lastVerifiedDate: lastVerified ? (lastVerified.realBalanceDate ?? lastVerified.date) : null,
   };
 }
 
@@ -572,6 +576,11 @@ function MortgageCard({ mortgage, onDelete }: { mortgage: Mortgage; onDelete: ()
                             {p.realBalance != null && Math.abs(p.realBalance - p.balanceAfter) > 1000 && (
                               <span style={{ color: "#d97706", fontWeight: 400, fontSize: 11 }} title={t("debts.realBalanceDiffHint")}> ⚠</span>
                             )}
+                            {p.realBalanceDate && (
+                              <div style={{ fontSize: 10, color: "#9ca3af", marginTop: 2 }}>
+                                {t("debts.realBalanceAsOf", { date: fmtDate(p.realBalanceDate) })}
+                              </div>
+                            )}
                           </td>
                           <td style={{ padding: "7px 10px", color: /Estimad/.test(p.notes) ? "#d97706" : "#6b7280", fontStyle: /Estimad/.test(p.notes) ? "italic" : "normal" }}>{p.notes || "—"}</td>
                           <td style={{ padding: "7px 10px", textAlign: "right" }}>
@@ -937,7 +946,7 @@ function NewMortgageForm({ onSave, onCancel, loading }: {
 
 function PaymentForm({ lastPayment, onSave, onCancel, loading }: {
   lastPayment?: MortgagePayment | null;
-  onSave: (data: { date: string; principalPaid: number; interestPaid: number; interestCovered: number; insurancePaid: number; realBalance?: number; isExtra: boolean; notes?: string }) => void;
+  onSave: (data: { date: string; principalPaid: number; interestPaid: number; interestCovered: number; insurancePaid: number; realBalance?: number; realBalanceDate?: string; isExtra: boolean; notes?: string }) => void;
   onCancel: () => void;
   loading: boolean;
 }) {
@@ -949,6 +958,7 @@ function PaymentForm({ lastPayment, onSave, onCancel, loading }: {
   const [interestCovered, setInterestCovered] = useState(lastPayment ? formatCopInput(String(lastPayment.interestCovered)) : "0");
   const [insurancePaid, setInsurancePaid] = useState(lastPayment ? formatCopInput(String(lastPayment.insurancePaid)) : "0");
   const [realBalance, setRealBalance] = useState("");
+  const [realBalanceDate, setRealBalanceDate] = useState("");
   const [notes, setNotes] = useState("");
 
   function handleSubmit() {
@@ -957,8 +967,9 @@ function PaymentForm({ lastPayment, onSave, onCancel, loading }: {
     const c = isExtra ? 0 : parse(interestCovered);
     const ins = isExtra ? 0 : parse(insurancePaid);
     const rb = !isExtra && realBalance ? parse(realBalance) : undefined;
+    const rbDate = !isExtra && realBalanceDate ? realBalanceDate : undefined;
     if (!date || !p) return;
-    onSave({ date, principalPaid: p, interestPaid: i, interestCovered: c, insurancePaid: ins, realBalance: rb, isExtra, notes });
+    onSave({ date, principalPaid: p, interestPaid: i, interestCovered: c, insurancePaid: ins, realBalance: rb, realBalanceDate: rbDate, isExtra, notes });
   }
 
   return (
@@ -1009,6 +1020,12 @@ function PaymentForm({ lastPayment, onSave, onCancel, loading }: {
             <span style={label}>{t("debts.formRealBalance")}</span>
             <input style={input} placeholder="56.463.073" value={realBalance}
               onChange={e => setRealBalance(formatCopInput(e.target.value))} />
+          </div>
+        )}
+        {!isExtra && realBalance && (
+          <div>
+            <span style={label}>{t("debts.formRealBalanceDate")}</span>
+            <input style={input} type="date" value={realBalanceDate} onChange={e => setRealBalanceDate(e.target.value)} />
           </div>
         )}
         <div>

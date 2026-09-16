@@ -47,6 +47,7 @@ export const debtsEn = {
   colBalanceAfter: "Balance after",
   colRealBalance: "Real balance (bank)",
   realBalanceDiffHint: "Differs from the derived balance",
+  realBalanceAsOf: "as of {{date}}",
   colNotes: "Notes",
   colExtra: "Extra",
   typeInstallment: "Installment",
@@ -93,6 +94,7 @@ export const debtsEn = {
   formInterestCoveredCOP: "Benefit covered (COP)",
   formInsuranceCOP: "Insurance (COP)",
   formRealBalance: "Real balance (COP)",
+  formRealBalanceDate: "Real balance as-of date",
   formNotes: "Notes",
   formOptional: "Optional",
 };
@@ -146,6 +148,7 @@ export const debtsEs: typeof debtsEn = {
   colBalanceAfter: "Saldo después",
   colRealBalance: "Saldo real (banco)",
   realBalanceDiffHint: "Difiere del saldo calculado",
+  realBalanceAsOf: "a la fecha de corte {{date}}",
   colNotes: "Notas",
   colExtra: "Extra",
   typeInstallment: "Cuota",
@@ -192,6 +195,7 @@ export const debtsEs: typeof debtsEn = {
   formInterestCoveredCOP: "Beneficio cubierto (COP)",
   formInsuranceCOP: "Seguro (COP)",
   formRealBalance: "Saldo real (COP)",
+  formRealBalanceDate: "Fecha de corte del saldo real",
   formNotes: "Notas",
   formOptional: "Opcional",
 };

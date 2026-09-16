@@ -832,6 +832,7 @@ export interface MortgagePayment {
   interestCovered: number;
   insurancePaid: number;
   realBalance: number | null;
+  realBalanceDate: string | null;
   isExtra: boolean;
   notes: string;
   createdAt: string;
@@ -896,7 +897,8 @@ export function useAddMortgagePayment() {
   return useMutation({
     mutationFn: (data: {
       mortgageId: string; date: string; principalPaid: number; interestPaid?: number;
-      interestCovered?: number; insurancePaid?: number; realBalance?: number; isExtra?: boolean; notes?: string;
+      interestCovered?: number; insurancePaid?: number; realBalance?: number; realBalanceDate?: string;
+      isExtra?: boolean; notes?: string;
     }) => post("/api/mortgage-payments", data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["mortgage-payments"] });
@@ -910,7 +912,7 @@ export function useUpdateMortgagePayment() {
   return useMutation({
     mutationFn: (data: {
       id: string; principalPaid?: number; interestPaid?: number;
-      interestCovered?: number; insurancePaid?: number; realBalance?: number; notes?: string;
+      interestCovered?: number; insurancePaid?: number; realBalance?: number; realBalanceDate?: string; notes?: string;
     }) => put(`/api/mortgage-payments/${data.id}`, data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["mortgage-payments"] });
