@@ -23,6 +23,8 @@ export async function PUT(
   if (body.insurancePaid    !== undefined) data.insurancePaid    = body.insurancePaid;
   if (body.realBalance      !== undefined) data.realBalance      = body.realBalance;
   if (body.realBalanceDate  !== undefined) data.realBalanceDate  = body.realBalanceDate ? new Date(body.realBalanceDate) : null;
+  if (body.previousBalance     !== undefined) data.previousBalance     = body.previousBalance;
+  if (body.previousBalanceDate !== undefined) data.previousBalanceDate = body.previousBalanceDate ? new Date(body.previousBalanceDate) : null;
   if (body.notes            !== undefined) data.notes            = body.notes;
 
   const payment = await prisma.mortgagePayment.update({ where: { id }, data });

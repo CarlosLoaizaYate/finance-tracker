@@ -423,7 +423,7 @@ function MortgageCard({ mortgage, onDelete }: { mortgage: Mortgage; onDelete: ()
       <div style={{ marginBottom: 16 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6 }}>
           <span style={{ fontSize: 13, fontWeight: 700, color: "#374151" }}>
-            {t("debts.installmentProgress", { count: summary.regularCuotasPaid, total: mortgage.termMonths })}
+            {t("debts.installmentProgress", { count: summary.regularCuotasPaid + CUOTA_NUMBER_OFFSET, total: mortgage.termMonths })}
           </span>
           <span style={{ textAlign: "right" }}>
             <span style={{ fontSize: 18, fontWeight: 800, color: "#7c3aed" }}>{summary.pctPaidOff.toFixed(1)}%</span>
@@ -586,6 +586,14 @@ function MortgageCard({ mortgage, onDelete }: { mortgage: Mortgage; onDelete: ()
                             {p.realBalanceDate && (
                               <div style={{ fontSize: 10, color: "#9ca3af", marginTop: 2 }}>
                                 {t("debts.realBalanceAsOf", { date: fmtDate(p.realBalanceDate) })}
+                              </div>
+                            )}
+                            {p.previousBalance != null && (
+                              <div style={{ fontSize: 10, color: "#9ca3af", marginTop: 2 }}>
+                                {t("debts.previousBalanceLabel", {
+                                  amount: fmtMoney(p.previousBalance, "COP"),
+                                  date: p.previousBalanceDate ? fmtDate(p.previousBalanceDate) : "—",
+                                })}
                               </div>
                             )}
                           </td>

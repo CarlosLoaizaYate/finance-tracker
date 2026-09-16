@@ -833,6 +833,8 @@ export interface MortgagePayment {
   insurancePaid: number;
   realBalance: number | null;
   realBalanceDate: string | null;
+  previousBalance: number | null;
+  previousBalanceDate: string | null;
   isExtra: boolean;
   notes: string;
   createdAt: string;

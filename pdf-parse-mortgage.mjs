@@ -40,6 +40,7 @@ function parseStatement(text, filename) {
   const interestCoveredM = text.match(/^Int\. Cte Cobertura \$([\d,]+\.\d+)/m);
   const insurancePaidM = text.match(/\+\s*Seguros:\s*\$([\d,]+\.\d+)/);
   const closingM = text.match(/Saldo a la Fecha de Corte:\s*(\w+)\.\s*(\d+)\/(\d+)\s+\$([\d,]+\.\d+)/);
+  const previousM = text.match(/Saldo Anterior:\s*(\w+)\.\s*(\d+)\/(\d+)\s+\$([\d,]+\.\d+)/);
   const periodM = text.match(/de (\w+)\.\s*(\d+)\/(\d+)\s+a\s+(\w+)\.\s*(\d+)\/(\d+)/);
   const rateM = text.match(/Tasa\s+Interés\s+Cte\.\s+Pactada\s+([\d.]+)\s+Efectivo Anual/);
   const subsidizedRateM = text.match(/Tasa\s+Interés\s+Cte\.\s+Cobrada\s+([\d.]+)\s+Efectivo Anual/);
@@ -56,6 +57,7 @@ function parseStatement(text, filename) {
   }
 
   const closingDate = parseFecha(closingM[1], closingM[2], closingM[3]);
+  const previousDate = previousM ? parseFecha(previousM[1], previousM[2], previousM[3]) : null;
   const periodStart = parseFecha(periodM[1], periodM[2], periodM[3]);
   const periodEnd = parseFecha(periodM[4], periodM[5], periodM[6]);
   const date = transferDate || closingDate;
@@ -72,6 +74,8 @@ function parseStatement(text, filename) {
     interestCovered: interestCoveredM ? Math.round(money(interestCoveredM[1])) : 0,
     insurancePaid: insurancePaidM ? Math.round(money(insurancePaidM[1])) : 0,
     balanceAtClose: money(closingM[4]),
+    previousDate,
+    previousBalance: previousM ? money(previousM[4]) : null,
     interestRate: rateM ? Number(rateM[1]) : null,
     subsidizedRate: subsidizedRateM ? Number(subsidizedRateM[1]) : null,
     subsidyRate: subsidyRateM ? Number(subsidyRateM[1]) : null,

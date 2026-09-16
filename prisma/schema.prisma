@@ -315,6 +315,8 @@ model MortgagePayment {
   insurancePaid    Int      @default(0)  // COP of life/property insurance premiums paid alongside the cuota
   realBalance      Int?                  // "Saldo a la Fecha de Corte" — the bank's own reported balance for this period's cutoff (usually the 15th), when known. Authoritative over the derived balance when present.
   realBalanceDate  DateTime?             // The cutoff date that realBalance is measured as-of, per the bank statement — often a different date than `date` (which is when the payment was actually transferred).
+  previousBalance     Int?               // "Saldo Anterior" — the bank's reported opening balance for this statement's period, as printed on the statement (not derived from the prior row — the bank's own figure can differ slightly).
+  previousBalanceDate DateTime?          // The date previousBalance is measured as-of, per the bank statement.
   isExtra          Boolean  @default(false) // true = extra principal payment outside the regular cuota
   notes            String   @default("")
   createdAt        DateTime @default(now())
