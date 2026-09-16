@@ -111,6 +111,13 @@ function computeMortgageSummary(mortgage: Mortgage) {
   };
 }
 
+// The bank's own statements ("No. de Cuota que se Cancela") number our
+// earliest recorded payment as cuota #2, not #1 — the very first statement
+// was never captured (different template / missing from the scanned
+// folder). Every cuota number we display is offset by this fixed amount so
+// it matches the bank's numbering instead of just counting our own rows.
+const CUOTA_NUMBER_OFFSET = 1;
+
 type PaymentWithBalance = MortgagePayment & { balanceAfter: number; cuotaNumber: number };
 
 function groupByYear<T extends { date: string }>(rows: T[]): Array<[number, T[]]> {
@@ -198,7 +205,7 @@ function projectRemaining(mortgage: Mortgage, extraMonthly: number): ProjectedRo
 
     rows.push({
       date: cursor.toISOString().slice(0, 10),
-      cuotaNumber: regularCuotasPaid + month + 1,
+      cuotaNumber: CUOTA_NUMBER_OFFSET + regularCuotasPaid + month + 1,
       principalPaid: Math.round(principal),
       interestPaid: Math.round(interest),
       extraPaid: Math.round(extra),
@@ -275,7 +282,7 @@ function projectNoExtraCounterfactual(mortgage: Mortgage): ProjectedRow[] {
 
     rows.push({
       date: cursor.toISOString().slice(0, 10),
-      cuotaNumber: regularCuotasPaid + month + 1,
+      cuotaNumber: CUOTA_NUMBER_OFFSET + regularCuotasPaid + month + 1,
       principalPaid: Math.round(principal),
       interestPaid: Math.round(interest),
       extraPaid: 0,
@@ -345,7 +352,7 @@ function MortgageCard({ mortgage, onDelete }: { mortgage: Mortgage; onDelete: ()
   const sortedPayments = [...mortgage.payments].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
   const paymentsWithBalance = sortedPayments.reduce<PaymentWithBalance[]>((acc, p) => {
     const prevBalance = acc.length > 0 ? acc[acc.length - 1].balanceAfter : mortgage.principal;
-    const prevCuota = acc.length > 0 ? acc[acc.length - 1].cuotaNumber : 0;
+    const prevCuota = acc.length > 0 ? acc[acc.length - 1].cuotaNumber : CUOTA_NUMBER_OFFSET;
     // Only regular cuotas advance the installment counter — an abono extra
     // a capital is associated with the cuota it follows, not its own number.
     const cuotaNumber = p.isExtra ? prevCuota : prevCuota + 1;
