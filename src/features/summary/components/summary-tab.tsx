@@ -20,7 +20,9 @@ import {
   useBtcPurchases,
   useCryptoSnapshots,
   useCryptoSettings,
+  useCardInstallments,
   effectiveIncomeAmount,
+  installmentAmountAt,
 } from "@/hooks/use-finance-data";
 import { useDashboardStore } from "@/stores/dashboard-store";
 import { MONTHS } from "@/lib/constants";
@@ -39,6 +41,7 @@ export default function SummaryTab() {
   const { data: dbRecords = [] } = useExpenseRecords(year);
   const { data: incomeSources = [] } = useIncomeSources();
   const { data: categories = [] } = useCategories();
+  const { data: cardInstallments = [] } = useCardInstallments();
 
   // item lookup: id → { catId, excludeFromTotal }
   const itemById = useMemo(
@@ -77,11 +80,21 @@ export default function SummaryTab() {
           const it = itemById[itemId];
           if (it && !it.excludeFromTotal) catT[it.catId] = (catT[it.catId] ?? 0) + amount;
         });
-        const gast = Object.values(catT).reduce((s, v) => s + v, 0);
+        let gast = Object.values(catT).reduce((s, v) => s + v, 0);
+        // No-interest card installments aren't ExpenseRecords, but their
+        // monthly share is still real spending — count it in the total, and
+        // fold it into its category (when set) for the breakdown too.
+        cardInstallments.forEach((ci) => {
+          const amt = installmentAmountAt(ci, mi, year);
+          if (amt > 0) {
+            gast += amt;
+            if (ci.categoryId) catT[ci.categoryId] = (catT[ci.categoryId] ?? 0) + amt;
+          }
+        });
         return { mes: MONTHS[mi], mi, ...catT, ingresos: ingt, gastos: gast, libre: ingt - gast };
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [range, gastos, itemById, incomeSources, year]
+    [range, gastos, itemById, incomeSources, year, cardInstallments]
   );
 
   const totals = useMemo(() => {
@@ -99,12 +112,17 @@ export default function SummaryTab() {
         const it = itemById[itemId];
         if (it && !it.excludeFromTotal) catTotals[it.catId] = (catTotals[it.catId] ?? 0) + amount;
       });
+      cardInstallments.forEach((ci) => {
+        if (!ci.categoryId) return;
+        const amt = installmentAmountAt(ci, mi, year);
+        if (amt > 0) catTotals[ci.categoryId] = (catTotals[ci.categoryId] ?? 0) + amt;
+      });
     });
     return categories
       .map((c) => ({ name: c.name, color: c.color, value: catTotals[c.id] ?? 0 }))
       .filter((x) => x.value > 0)
       .sort((a, b) => b.value - a.value);
-  }, [range, gastos, itemById, categories]);
+  }, [range, gastos, itemById, categories, cardInstallments, year]);
 
   // Current month income total for banner
   const curMonth = new Date().getMonth() + 1;
