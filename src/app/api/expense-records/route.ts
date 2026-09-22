@@ -85,6 +85,7 @@ export async function PUT(req: NextRequest) {
     if (body.realValue !== undefined) data.realValue = body.realValue;
     if (body.comment   !== undefined) data.comment   = body.comment;
     if (body.itemId    !== undefined) data.itemId    = body.itemId;
+    if (body.paidWithCard !== undefined) data.paidWithCard = body.paidWithCard;
     const record = await prisma.expenseRecord.update({
       where: { id: body.id, userId: user.id },
       data,
@@ -100,6 +101,7 @@ export async function PUT(req: NextRequest) {
       year:      body.year,
       realValue: body.realValue,
       comment:   body.comment ?? "",
+      paidWithCard: body.paidWithCard ?? false,
       userId:    user.id,
     },
   });

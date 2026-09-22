@@ -8,7 +8,12 @@ import {
   useExpenseRecordsRange,
   useUpsertExpenseRecord,
   useDeleteExpenseRecord,
+  useCardInstallments,
+  useAddCardInstallment,
+  useDeleteCardInstallment,
   effectiveBudget,
+  installmentNumberAt,
+  installmentAmountAt,
   type ExpenseItem,
   type ExpenseRecord,
   type Category,
@@ -34,7 +39,7 @@ function AddRecordForm({
   month: number; year: number;
   items: ExpenseItem[];
   catById: Record<string, Category>;
-  onSave(itemId: string, day: number, amount: number, comment: string): void;
+  onSave(itemId: string, day: number, amount: number, comment: string, paidWithCard: boolean): void;
   onCancel(): void;
 }) {
   const { t } = useTranslation();
@@ -43,6 +48,7 @@ function AddRecordForm({
   const [day,     setDay]     = useState(new Date().getDate());
   const [amount,  setAmount]  = useState("");
   const [comment, setComment] = useState("");
+  const [paidWithCard, setPaidWithCard] = useState(false);
 
   const grouped = useMemo(() => {
     const g: Record<string, ExpenseItem[]> = {};
@@ -89,14 +95,18 @@ function AddRecordForm({
         <input
           type="text" value={comment}
           onChange={(e) => setComment(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && amount && onSave(itemId, day, +amount, comment)}
+          onKeyDown={(e) => e.key === "Enter" && amount && onSave(itemId, day, +amount, comment, paidWithCard)}
           placeholder={t("expenses.optional")}
           style={{ width: 160, padding: "5px 8px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 13 }}
         />
       </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <input type="checkbox" checked={paidWithCard} onChange={(e) => setPaidWithCard(e.target.checked)} id="chk-paid-card" />
+        <label htmlFor="chk-paid-card" style={{ fontSize: 11, color: "#6b7280", cursor: "pointer" }}>{t("expenses.paidWithCardLabel")}</label>
+      </div>
       <div style={{ display: "flex", gap: 6, alignItems: "flex-end" }}>
         <button
-          onClick={() => onSave(itemId, day, +amount, comment)}
+          onClick={() => onSave(itemId, day, +amount, comment, paidWithCard)}
           disabled={!itemId || !amount}
           style={{
             padding: "5px 14px", borderRadius: 6, border: "none", cursor: "pointer",
@@ -310,8 +320,8 @@ function ActiveMonthTable({
 
   const monthTotal = records.reduce((s, r) => (itemById[r.itemId]?.excludeFromTotal ? s : s + r.realValue), 0);
 
-  const handleAdd = (itemId: string, day: number, amount: number, comment: string) => {
-    upsert.mutate({ itemId, day, month, year, realValue: amount, comment });
+  const handleAdd = (itemId: string, day: number, amount: number, comment: string, paidWithCard: boolean) => {
+    upsert.mutate({ itemId, day, month, year, realValue: amount, comment, paidWithCard });
     setShowAdd(false);
   };
 
@@ -325,6 +335,7 @@ function ActiveMonthTable({
               <th style={{ textAlign: "left",   padding: "9px 12px", fontWeight: 600, color: "#374151" }}>{t("expenses.description")}</th>
               <th style={{ textAlign: "left",   padding: "9px 10px", fontWeight: 600, color: "#374151" }}>{t("expenses.category")}</th>
               <th style={{ textAlign: "left",   padding: "9px 10px", fontWeight: 600, color: "#9ca3af" }}>{t("expenses.comment")}</th>
+              <th style={{ textAlign: "center", padding: "9px 6px",  fontWeight: 600, color: "#9ca3af", width: 40 }} title={t("expenses.paidWithCardLabel")}>💳</th>
               <th style={{ textAlign: "right",  padding: "9px 10px", fontWeight: 600, color: "#9ca3af" }}>{t("expenses.budget")}</th>
               <th style={{ textAlign: "right",  padding: "9px 10px", fontWeight: 600, color: "#6366f1" }}>
                 {t("expenses.actualHeader", { month: MONTHS[month] })}
@@ -335,7 +346,7 @@ function ActiveMonthTable({
           <tbody>
             {sorted.length === 0 && (
               <tr>
-                <td colSpan={7} style={{ padding: "18px 14px", color: "#9ca3af", fontSize: 13, textAlign: "center" }}>
+                <td colSpan={8} style={{ padding: "18px 14px", color: "#9ca3af", fontSize: 13, textAlign: "center" }}>
                   {t("expenses.noExpensesRecorded", { month: MONTHS[month], year })}
                 </td>
               </tr>
@@ -374,6 +385,15 @@ function ActiveMonthTable({
                       onChange={(v) => upsert.mutate({ id: rec.id, comment: v })}
                     />
                   </td>
+                  <td style={{ padding: "4px 6px", textAlign: "center" }}>
+                    <span
+                      onClick={() => upsert.mutate({ id: rec.id, paidWithCard: !rec.paidWithCard })}
+                      title={t("expenses.paidWithCardLabel")}
+                      style={{ cursor: "pointer", fontSize: 14, opacity: rec.paidWithCard ? 1 : 0.2 }}
+                    >
+                      💳
+                    </span>
+                  </td>
                   <td style={{ padding: "6px 10px", textAlign: "right", color: "#d1d5db", fontSize: 12 }}>
                     {budget > 0 ? <Money amount={budget} /> : "—"}
                   </td>
@@ -399,7 +419,7 @@ function ActiveMonthTable({
 
             {sorted.length > 0 && (
               <tr style={{ borderTop: "2px solid #e5e7eb", background: "#f9fafb" }}>
-                <td colSpan={5} style={{ padding: "7px 12px", fontWeight: 700, fontSize: 13, color: "#374151" }}>
+                <td colSpan={6} style={{ padding: "7px 12px", fontWeight: 700, fontSize: 13, color: "#374151" }}>
                   {t("expenses.monthTotal", { month: MONTHS[month] })}
                 </td>
                 <td style={{ padding: "7px 10px", textAlign: "right", fontWeight: 800, fontSize: 14, color: "#111827" }}>
@@ -430,6 +450,143 @@ function ActiveMonthTable({
             }}
           >
             {t("expenses.addExpense")}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Tarjeta de crédito: resumen + compras a cuotas ─────────────────────────
+
+function AddInstallmentForm({ month, year, onDone }: { month: number; year: number; onDone: () => void }) {
+  const { t } = useTranslation();
+  const addInstallment = useAddCardInstallment();
+  const [name, setName] = useState("");
+  const [totalAmount, setTotalAmount] = useState("");
+  const [installments, setInstallments] = useState("");
+  const [startMonth, setStartMonth] = useState(month);
+  const [startYear, setStartYear] = useState(year);
+
+  const handleAdd = () => {
+    if (!name.trim() || !totalAmount || !installments) return;
+    addInstallment.mutate(
+      { name: name.trim(), totalAmount: +totalAmount, installments: +installments, startMonth, startYear },
+      { onSuccess: onDone }
+    );
+  };
+
+  return (
+    <div style={{
+      display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end",
+      padding: "10px 14px", background: "#f0f9ff", borderRadius: 8, marginTop: 10,
+      border: "1px dashed #a5b4fc",
+    }}>
+      <div>
+        <label style={{ fontSize: 11, color: "#6b7280", display: "block", marginBottom: 2 }}>{t("expenses.installmentNameLabel")}</label>
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder={t("expenses.installmentNamePlaceholder")}
+          style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 13, width: 160 }} />
+      </div>
+      <div>
+        <label style={{ fontSize: 11, color: "#6b7280", display: "block", marginBottom: 2 }}>{t("expenses.installmentTotalLabel")}</label>
+        <input type="number" value={totalAmount} onChange={(e) => setTotalAmount(e.target.value)} placeholder="0"
+          style={{ width: 120, padding: "5px 8px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 13 }} />
+      </div>
+      <div>
+        <label style={{ fontSize: 11, color: "#6b7280", display: "block", marginBottom: 2 }}>{t("expenses.installmentCountLabel")}</label>
+        <input type="number" min={1} value={installments} onChange={(e) => setInstallments(e.target.value)} placeholder="6"
+          style={{ width: 70, padding: "5px 8px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 13 }} />
+      </div>
+      <div>
+        <label style={{ fontSize: 11, color: "#6b7280", display: "block", marginBottom: 2 }}>{t("expenses.installmentStartLabel")}</label>
+        <div style={{ display: "flex", gap: 4 }}>
+          <select value={startMonth} onChange={(e) => setStartMonth(+e.target.value)}
+            style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 13 }}>
+            {MONTHS.map((m, i) => <option key={i} value={i}>{m}</option>)}
+          </select>
+          <select value={startYear} onChange={(e) => setStartYear(+e.target.value)}
+            style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 13 }}>
+            {[2024, 2025, 2026, 2027].map((y) => <option key={y} value={y}>{y}</option>)}
+          </select>
+        </div>
+      </div>
+      <div style={{ display: "flex", gap: 6, alignItems: "flex-end" }}>
+        <button onClick={handleAdd} disabled={addInstallment.isPending || !name.trim() || !totalAmount || !installments}
+          style={{ padding: "5px 14px", borderRadius: 6, border: "none", cursor: "pointer",
+            background: "#6366f1", color: "#fff", fontWeight: 600, fontSize: 13 }}>
+          {t("expenses.save")}
+        </button>
+        <button onClick={onDone}
+          style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid #d1d5db",
+            background: "none", color: "#6b7280", cursor: "pointer", fontSize: 13 }}>
+          {t("expenses.cancel")}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function CardSummarySection({ month, year, records }: { month: number; year: number; records: ExpenseRecord[] }) {
+  const { t } = useTranslation();
+  const { data: allInstallments = [] } = useCardInstallments();
+  const deleteInstallment = useDeleteCardInstallment();
+  const [showAdd, setShowAdd] = useState(false);
+
+  const cardRecordsTotal = records.reduce((s, r) => r.paidWithCard ? s + r.realValue : s, 0);
+
+  const withStatus = useMemo(() => allInstallments
+    .map((ci) => ({ ci, n: installmentNumberAt(ci, month, year), amount: installmentAmountAt(ci, month, year) }))
+    .sort((a, b) => (b.ci.startYear - a.ci.startYear) || (b.ci.startMonth - a.ci.startMonth)),
+    [allInstallments, month, year]
+  );
+  const installmentsTotal = withStatus.reduce((s, x) => s + (x.n != null ? x.amount : 0), 0);
+  const grandTotal = cardRecordsTotal + installmentsTotal;
+
+  return (
+    <div style={{ background: "#fff", borderRadius: 12, boxShadow: "0 1px 4px #0001", marginBottom: 20, overflow: "hidden" }}>
+      <div style={{ padding: "12px 16px", borderBottom: "1px solid #f3f4f6", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+        <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#111827" }}>{t("expenses.cardSectionTitle")}</h3>
+        <span style={{ fontSize: 13, color: "#6b7280" }}>
+          {t("expenses.cardMonthTotalLabel")} <strong style={{ color: "#111827", fontSize: 15 }}><Money amount={grandTotal} /></strong>
+        </span>
+      </div>
+      <div style={{ padding: "10px 16px", display: "flex", gap: 20, flexWrap: "wrap", fontSize: 12, color: "#6b7280", borderBottom: "1px solid #f3f4f6" }}>
+        <span>{t("expenses.cardTaggedLabel")} <strong style={{ color: "#374151" }}><Money amount={cardRecordsTotal} /></strong></span>
+        <span>{t("expenses.cardInstallmentsLabel")} <strong style={{ color: "#374151" }}><Money amount={installmentsTotal} /></strong></span>
+      </div>
+
+      {withStatus.length > 0 && (
+        <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
+          {withStatus.map(({ ci, n, amount }) => (
+            <li key={ci.id} style={{ padding: "9px 16px", borderBottom: "1px solid #f9fafb", display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{ flex: 1, fontSize: 13, color: "#111827", fontWeight: 500 }}>{ci.name}</span>
+              <span style={{ fontSize: 12, color: n != null ? "#6366f1" : "#9ca3af", fontWeight: 600 }}>
+                {n != null
+                  ? t("expenses.installmentProgress", { n, total: ci.installments })
+                  : (n === null && (year > ci.startYear || (year === ci.startYear && month >= ci.startMonth + ci.installments))
+                      ? t("expenses.installmentDone")
+                      : t("expenses.installmentUpcoming"))}
+              </span>
+              <span style={{ fontSize: 13, fontWeight: 700, color: n != null ? "#111827" : "#d1d5db", minWidth: 90, textAlign: "right" }}>
+                {n != null ? <Money amount={amount} /> : "—"}
+              </span>
+              <button onClick={() => deleteInstallment.mutate(ci.id)}
+                style={{ background: "none", border: "none", cursor: "pointer", color: "#ef4444", fontSize: 13 }}>
+                ✕
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <div style={{ padding: "10px 16px 14px" }}>
+        {showAdd ? (
+          <AddInstallmentForm month={month} year={year} onDone={() => setShowAdd(false)} />
+        ) : (
+          <button onClick={() => setShowAdd(true)}
+            style={{ padding: "6px 14px", borderRadius: 7, border: "1px dashed #a5b4fc",
+              background: "none", color: "#6366f1", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>
+            {t("expenses.addInstallment")}
           </button>
         )}
       </div>
@@ -801,6 +958,9 @@ export default function ExpensesTab() {
         catById={catById}
         records={monthRecords}
       />
+
+      {/* ── Tarjeta de crédito ── */}
+      <CardSummarySection month={expenseMonth} year={expenseYear} records={monthRecords} />
 
       {/* ── Historical sections ── */}
       <MonthlyHistorySection items={dbItems} catById={catById} />

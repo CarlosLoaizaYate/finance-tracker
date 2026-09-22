@@ -101,7 +101,36 @@ export interface ExpenseRecord {
   year: number;
   realValue: number;
   comment: string;
+  paidWithCard: boolean;
   itemId: string;
+}
+
+export interface CardInstallment {
+  id: string;
+  name: string;
+  totalAmount: number;
+  installments: number;
+  startMonth: number;
+  startYear: number;
+  categoryId: string | null;
+  notes: string;
+  createdAt: string;
+}
+
+/** Which installment number (1-based) applies at month/year, or null if outside the schedule */
+export function installmentNumberAt(ci: CardInstallment, month: number, year: number): number | null {
+  const idx = (year - ci.startYear) * 12 + (month - ci.startMonth);
+  if (idx < 0 || idx >= ci.installments) return null;
+  return idx + 1;
+}
+
+/** Monthly installment amount — last installment absorbs the rounding remainder */
+export function installmentAmountAt(ci: CardInstallment, month: number, year: number): number {
+  const n = installmentNumberAt(ci, month, year);
+  if (n == null) return 0;
+  const base = Math.floor(ci.totalAmount / ci.installments);
+  const isLast = n === ci.installments;
+  return isLast ? ci.totalAmount - base * (ci.installments - 1) : base;
 }
 
 export interface InvestmentType {
@@ -177,6 +206,13 @@ export function useExpenseRecordsRange(
   });
 }
 
+export function useCardInstallments() {
+  return useQuery<CardInstallment[]>({
+    queryKey: ["card-installments"],
+    queryFn: () => get("/api/card-installments"),
+  });
+}
+
 export function useStocks() {
   return useQuery<Stock[]>({
     queryKey: ["stocks"],
@@ -224,13 +260,32 @@ export function useUpsertExpenseRecord() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (data:
-      | { id: string; day?: number; realValue?: number; comment?: string; itemId?: string }
-      | { itemId: string; day: number; month: number; year: number; realValue: number; comment?: string }
+      | { id: string; day?: number; realValue?: number; comment?: string; itemId?: string; paidWithCard?: boolean }
+      | { itemId: string; day: number; month: number; year: number; realValue: number; comment?: string; paidWithCard?: boolean }
     ) => put("/api/expense-records", data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["expense-records"] });
       qc.invalidateQueries({ queryKey: ["expense-records-range"] });
     },
+  });
+}
+
+export function useAddCardInstallment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: {
+      name: string; totalAmount: number; installments: number;
+      startMonth: number; startYear: number; categoryId?: string; notes?: string;
+    }) => post("/api/card-installments", data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["card-installments"] }),
+  });
+}
+
+export function useDeleteCardInstallment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => del(`/api/card-installments/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["card-installments"] }),
   });
 }
 

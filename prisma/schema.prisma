@@ -33,15 +33,17 @@ model User {
   cryptoSnapshots        CryptoSnapshot[]
   mortgages              Mortgage[]
   mortgagePayments       MortgagePayment[]
+  cardInstallments       CardInstallment[]
 }
 
 model Category {
-  id     String        @id @default(uuid())
-  name   String
-  color  String
-  userId String
-  user   User          @relation(fields: [userId], references: [id])
-  items  ExpenseItem[]
+  id               String            @id @default(uuid())
+  name             String
+  color            String
+  userId           String
+  user             User              @relation(fields: [userId], references: [id])
+  items            ExpenseItem[]
+  cardInstallments CardInstallment[]
 
   @@unique([name, userId])
 }
@@ -64,16 +66,36 @@ model ExpenseItem {
 }
 
 model ExpenseRecord {
-  id        String      @id @default(uuid())
-  day       Int         @default(1)
-  month     Int
-  year      Int
-  realValue Int
-  comment   String      @default("")
-  itemId    String
-  userId    String
-  item      ExpenseItem @relation(fields: [itemId], references: [id])
-  user      User        @relation(fields: [userId], references: [id])
+  id           String      @id @default(uuid())
+  day          Int         @default(1)
+  month        Int
+  year         Int
+  realValue    Int
+  comment      String      @default("")
+  paidWithCard Boolean     @default(false) // true = paid with the credit card, regardless of category
+  itemId       String
+  userId       String
+  item         ExpenseItem @relation(fields: [itemId], references: [id])
+  user         User        @relation(fields: [userId], references: [id])
+}
+
+// A purchase split into a fixed number of no-interest monthly installments
+// ("cuotas") on the credit card. The monthly amount and which installment is
+// current are derived from totalAmount/installments and today's date — no
+// interest math, no need to re-enter it each month.
+model CardInstallment {
+  id           String    @id @default(uuid())
+  name         String
+  totalAmount  Int
+  installments Int
+  startMonth   Int       // 0-11
+  startYear    Int
+  categoryId   String?
+  notes        String    @default("")
+  createdAt    DateTime  @default(now())
+  userId       String
+  user         User      @relation(fields: [userId], references: [id])
+  category     Category? @relation(fields: [categoryId], references: [id])
 }
 
 model Stock {
