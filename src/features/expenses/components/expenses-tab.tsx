@@ -22,6 +22,7 @@ import { useDashboardStore } from "@/stores/dashboard-store";
 import { MONTHS } from "@/lib/constants";
 import EditableCell from "@/components/ui/editable-cell";
 import Money from "@/components/ui/money";
+import { fmtMoney } from "@/lib/formatters";
 import { useTranslation } from "@/hooks/use-translation";
 
 // ─── helpers ────────────────────────────────────────────────────────────────
@@ -318,7 +319,10 @@ function ActiveMonthTable({
     return nameA.localeCompare(nameB);
   });
 
-  const monthTotal = records.reduce((s, r) => (itemById[r.itemId]?.excludeFromTotal ? s : s + r.realValue), 0);
+  const recordsTotal = records.reduce((s, r) => (itemById[r.itemId]?.excludeFromTotal ? s : s + r.realValue), 0);
+  const { data: cardInstallments = [] } = useCardInstallments();
+  const installmentsTotal = cardInstallments.reduce((s, ci) => s + installmentAmountAt(ci, month, year), 0);
+  const monthTotal = recordsTotal + installmentsTotal;
 
   const handleAdd = (itemId: string, day: number, amount: number, comment: string, paidWithCard: boolean) => {
     upsert.mutate({ itemId, day, month, year, realValue: amount, comment, paidWithCard });
@@ -417,10 +421,15 @@ function ActiveMonthTable({
               );
             })}
 
-            {sorted.length > 0 && (
+            {(sorted.length > 0 || monthTotal > 0) && (
               <tr style={{ borderTop: "2px solid #e5e7eb", background: "#f9fafb" }}>
                 <td colSpan={6} style={{ padding: "7px 12px", fontWeight: 700, fontSize: 13, color: "#374151" }}>
                   {t("expenses.monthTotal", { month: MONTHS[month] })}
+                  {installmentsTotal > 0 && (
+                    <span style={{ fontWeight: 400, fontSize: 11, color: "#9ca3af", marginLeft: 6 }}>
+                      {t("expenses.includesInstallments", { amount: fmtMoney(installmentsTotal, "COP") })}
+                    </span>
+                  )}
                 </td>
                 <td style={{ padding: "7px 10px", textAlign: "right", fontWeight: 800, fontSize: 14, color: "#111827" }}>
                   {<Money amount={monthTotal} />}
