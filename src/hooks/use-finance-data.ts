@@ -58,6 +58,7 @@ export interface ExpenseItem {
   active: boolean;
   recurring: boolean;
   isImportant: boolean;
+  excludeFromTotal: boolean;
   categoryId: string;
   category?: Category;
   budgetHistory?: BudgetHistoryEntry[];
@@ -196,7 +197,7 @@ export function useInvestmentTypes() {
 export function useAddExpenseItem() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: { name: string; monthlyBudget: number; categoryId: string; isImportant?: boolean; defaultDay?: number }) =>
+    mutationFn: (data: { name: string; monthlyBudget: number; categoryId: string; isImportant?: boolean; excludeFromTotal?: boolean; defaultDay?: number }) =>
       post("/api/expense-items", data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["expense-items"] }),
   });
@@ -213,7 +214,7 @@ export function useRemoveExpenseItem() {
 export function useUpdateExpenseItem() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: { id: string; name?: string; categoryId?: string; monthlyBudget?: number; isImportant?: boolean; defaultDay?: number }) =>
+    mutationFn: (data: { id: string; name?: string; categoryId?: string; monthlyBudget?: number; isImportant?: boolean; excludeFromTotal?: boolean; defaultDay?: number }) =>
       put("/api/expense-items", data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["expense-items"] }),
   });

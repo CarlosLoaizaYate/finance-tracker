@@ -308,7 +308,7 @@ function ActiveMonthTable({
     return nameA.localeCompare(nameB);
   });
 
-  const monthTotal = records.reduce((s, r) => s + r.realValue, 0);
+  const monthTotal = records.reduce((s, r) => (itemById[r.itemId]?.excludeFromTotal ? s : s + r.realValue), 0);
 
   const handleAdd = (itemId: string, day: number, amount: number, comment: string) => {
     upsert.mutate({ itemId, day, month, year, realValue: amount, comment });
@@ -568,11 +568,11 @@ function MonthlyHistorySection({
     }
     return rows.map(({ month, year }) => {
       const recs  = recsByMonth[`${year}-${month}`] ?? [];
-      const total = recs.reduce((s, r) => s + r.realValue, 0);
+      const total = recs.reduce((s, r) => (itemById[r.itemId]?.excludeFromTotal ? s : s + r.realValue), 0);
       const byCat: Record<string, number> = {};
       recs.forEach((r) => {
         const it = itemById[r.itemId];
-        if (it) byCat[it.categoryId] = (byCat[it.categoryId] ?? 0) + r.realValue;
+        if (it && !it.excludeFromTotal) byCat[it.categoryId] = (byCat[it.categoryId] ?? 0) + r.realValue;
       });
       return { month, year, total, byCat, count: recs.length };
     });
@@ -668,11 +668,11 @@ function YearlyHistorySection({
     for (let y = fromYear; y <= toYear; y++) years.push(y);
     return years.map((year) => {
       const recs  = recsByYear[year] ?? [];
-      const total = recs.reduce((s, r) => s + r.realValue, 0);
+      const total = recs.reduce((s, r) => (itemById[r.itemId]?.excludeFromTotal ? s : s + r.realValue), 0);
       const byCat: Record<string, number> = {};
       recs.forEach((r) => {
         const it = itemById[r.itemId];
-        if (it) byCat[it.categoryId] = (byCat[it.categoryId] ?? 0) + r.realValue;
+        if (it && !it.excludeFromTotal) byCat[it.categoryId] = (byCat[it.categoryId] ?? 0) + r.realValue;
       });
       return { year, total, byCat, count: recs.length };
     });

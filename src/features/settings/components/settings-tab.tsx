@@ -384,6 +384,7 @@ function BudgetItemRow({ item, categories }: { item: ExpenseItem; categories: Ca
   const [editCatId,  setEditCatId]  = useState(item.categoryId);
   const [editImportant, setEditImportant] = useState(item.isImportant ?? false);
   const [editDefaultDay, setEditDefaultDay] = useState(item.defaultDay ?? 1);
+  const [editExcludeFromTotal, setEditExcludeFromTotal] = useState(item.excludeFromTotal ?? false);
 
   // budget change fields
   const [amount,    setAmount]    = useState("");
@@ -394,7 +395,7 @@ function BudgetItemRow({ item, categories }: { item: ExpenseItem; categories: Ca
   const cat = categories.find((c) => c.id === item.categoryId);
 
   const handleSaveEdit = () => {
-    updateItem.mutate({ id: item.id, name: editName.trim(), categoryId: editCatId, isImportant: editImportant, defaultDay: editDefaultDay });
+    updateItem.mutate({ id: item.id, name: editName.trim(), categoryId: editCatId, isImportant: editImportant, excludeFromTotal: editExcludeFromTotal, defaultDay: editDefaultDay });
     setMode("view");
   };
 
@@ -412,6 +413,7 @@ function BudgetItemRow({ item, categories }: { item: ExpenseItem; categories: Ca
         {cat && <span style={{ width: 8, height: 8, borderRadius: 2, background: cat.color, flexShrink: 0 }} />}
         <span style={{ flex: 1, fontSize: 13, color: "#111827", fontWeight: 500 }}>
           {item.name} {item.isImportant && <span style={{ fontSize: 11, color: "#f59e0b", marginLeft: 4 }}>{t("settings.dayNote", { day: item.defaultDay })}</span>}
+          {item.excludeFromTotal && <span style={{ fontSize: 10, fontWeight: 700, color: "#6366f1", background: "#e0e7ff", padding: "1px 6px", borderRadius: 10, marginLeft: 4 }}>{t("settings.excludeFromTotalTag")}</span>}
         </span>
         <span style={{ fontSize: 12, color: "#9ca3af" }}>{cat?.name}</span>
         <span style={{ fontSize: 13, fontWeight: 700, color: "#374151", minWidth: 80, textAlign: "right" }}>
@@ -457,6 +459,10 @@ function BudgetItemRow({ item, categories }: { item: ExpenseItem; categories: Ca
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <input type="checkbox" checked={editImportant} onChange={(e) => setEditImportant(e.target.checked)} id={`chk-${item.id}`} />
             <label htmlFor={`chk-${item.id}`} style={{ fontSize: 11, color: "#6b7280", cursor: "pointer" }}>{t("settings.reminderQuestionLabel")}</label>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <input type="checkbox" checked={editExcludeFromTotal} onChange={(e) => setEditExcludeFromTotal(e.target.checked)} id={`chk-excl-${item.id}`} />
+            <label htmlFor={`chk-excl-${item.id}`} style={{ fontSize: 11, color: "#6b7280", cursor: "pointer" }}>{t("settings.excludeFromTotalQuestionLabel")}</label>
           </div>
           {editImportant && (
             <div>
@@ -514,11 +520,12 @@ function AddExpenseItemForm({ categories, isImportant, onDone }: { categories: C
   const [catId,   setCatId]   = useState(categories[0]?.id ?? "");
   const [budget,  setBudget]  = useState("");
   const [defaultDay, setDefaultDay] = useState(new Date().getDate());
+  const [excludeFromTotal, setExcludeFromTotal] = useState(false);
 
   const handleAdd = () => {
     if (!name.trim() || !budget || !catId) return;
-    addItem.mutate({ name: name.trim(), monthlyBudget: +budget, categoryId: catId, isImportant, defaultDay }, {
-      onSuccess: () => { onDone(); setName(""); setBudget(""); setDefaultDay(new Date().getDate()); },
+    addItem.mutate({ name: name.trim(), monthlyBudget: +budget, categoryId: catId, isImportant, excludeFromTotal, defaultDay }, {
+      onSuccess: () => { onDone(); setName(""); setBudget(""); setDefaultDay(new Date().getDate()); setExcludeFromTotal(false); },
     });
   };
 
@@ -551,6 +558,10 @@ function AddExpenseItemForm({ categories, isImportant, onDone }: { categories: C
             style={{ width: 60, padding: "5px 8px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 13 }} />
         </div>
       )}
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <input type="checkbox" checked={excludeFromTotal} onChange={(e) => setExcludeFromTotal(e.target.checked)} id="chk-new-excl" />
+        <label htmlFor="chk-new-excl" style={{ fontSize: 11, color: "#6b7280", cursor: "pointer" }}>{t("settings.excludeFromTotalQuestionLabel")}</label>
+      </div>
       <button onClick={handleAdd} disabled={addItem.isPending || !name.trim() || !budget || !catId}
         style={{ padding: "5px 14px", borderRadius: 6, border: "none", cursor: "pointer",
           background: "#10b981", color: "#fff", fontWeight: 600, fontSize: 13 }}>

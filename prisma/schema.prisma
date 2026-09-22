@@ -54,6 +54,7 @@ model ExpenseItem {
   active        Boolean         @default(true)
   recurring     Boolean         @default(false)
   isImportant   Boolean         @default(false)
+  excludeFromTotal Boolean      @default(false) // true = records still tracked/visible, but excluded from month/year/category expense totals (e.g. a credit-card-payment item whose spend is already counted via the individual purchases)
   categoryId    String
   userId        String
   category      Category        @relation(fields: [categoryId], references: [id])

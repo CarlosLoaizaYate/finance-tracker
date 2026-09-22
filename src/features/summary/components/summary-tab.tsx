@@ -40,9 +40,9 @@ export default function SummaryTab() {
   const { data: incomeSources = [] } = useIncomeSources();
   const { data: categories = [] } = useCategories();
 
-  // item lookup: id → { catId }
+  // item lookup: id → { catId, excludeFromTotal }
   const itemById = useMemo(
-    () => Object.fromEntries(dbItems.map((it) => [it.id, { catId: it.categoryId }])),
+    () => Object.fromEntries(dbItems.map((it) => [it.id, { catId: it.categoryId, excludeFromTotal: it.excludeFromTotal }])),
     [dbItems]
   );
 
@@ -74,8 +74,8 @@ export default function SummaryTab() {
         const catT: Record<string, number> = {};
         const monthRecs = gastos[mi] ?? {};
         Object.entries(monthRecs).forEach(([itemId, amount]) => {
-          const catId = itemById[itemId]?.catId;
-          if (catId) catT[catId] = (catT[catId] ?? 0) + amount;
+          const it = itemById[itemId];
+          if (it && !it.excludeFromTotal) catT[it.catId] = (catT[it.catId] ?? 0) + amount;
         });
         const gast = Object.values(catT).reduce((s, v) => s + v, 0);
         return { mes: MONTHS[mi], mi, ...catT, ingresos: ingt, gastos: gast, libre: ingt - gast };
@@ -96,8 +96,8 @@ export default function SummaryTab() {
     range.forEach((mi) => {
       const monthRecs = gastos[mi] ?? {};
       Object.entries(monthRecs).forEach(([itemId, amount]) => {
-        const catId = itemById[itemId]?.catId;
-        if (catId) catTotals[catId] = (catTotals[catId] ?? 0) + amount;
+        const it = itemById[itemId];
+        if (it && !it.excludeFromTotal) catTotals[it.catId] = (catTotals[it.catId] ?? 0) + amount;
       });
     });
     return categories
