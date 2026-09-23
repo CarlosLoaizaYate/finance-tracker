@@ -152,6 +152,27 @@ interface ProjectedRow {
   balanceAfter: number;
 }
 
+// A fixed-cuota loan paid on schedule must reach exactly zero at the
+// nominal remaining term — that's what "cuota fija" means. A plain average
+// of the last few months' principal deltas is noisy and can systematically
+// under- or overshoot that target when projected ~100 months ahead (the
+// undershoot is what silently left a real residual balance at the nominal
+// term before this was added). Instead, solve for the constant monthly
+// increase that makes the arithmetic-sequence sum of principal payments
+// exactly consume the true "no extra, on schedule" balance over the
+// nominal remaining months — then apply that same calibrated trajectory to
+// every scenario (real balance, no-extra counterfactual, hypothetical
+// extra), so a real extra payment shows up as finishing early against a
+// baseline that itself lands exactly on the contracted term.
+function calibratedDeltaPrincipal(mortgage: Mortgage, regular: MortgagePayment[]): number {
+  const n = mortgage.termMonths - regular.length;
+  if (n <= 1) return 0;
+  const regularPrincipalPaid = regular.reduce((s, p) => s + p.principalPaid, 0);
+  const noExtraBalance = mortgage.principal - regularPrincipalPaid;
+  const a1 = regular[regular.length - 1].principalPaid;
+  return (2 * (noExtraBalance - n * a1)) / (n * (n - 1));
+}
+
 function projectRemaining(mortgage: Mortgage, extraMonthly: number): ProjectedRow[] {
   const sorted = [...mortgage.payments].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
   // Trend/anchor must come from regular cuotas only — an extra principal
@@ -174,7 +195,7 @@ function projectRemaining(mortgage: Mortgage, extraMonthly: number): ProjectedRo
     for (let i = 1; i < recent.length; i++) total += get(recent[i]) - get(recent[i - 1]);
     return total / (recent.length - 1);
   };
-  const deltaPrincipal = avgDelta(p => p.principalPaid);
+  const deltaPrincipal = calibratedDeltaPrincipal(mortgage, regular);
   const deltaCovered = avgDelta(p => p.interestCovered);
 
   let principal = recent[recent.length - 1].principalPaid;
@@ -257,7 +278,7 @@ function projectNoExtraCounterfactual(mortgage: Mortgage): ProjectedRow[] {
     for (let i = 1; i < recent.length; i++) total += get(recent[i]) - get(recent[i - 1]);
     return total / (recent.length - 1);
   };
-  const deltaPrincipal = avgDelta(p => p.principalPaid);
+  const deltaPrincipal = calibratedDeltaPrincipal(mortgage, regular);
   const deltaCovered = avgDelta(p => p.interestCovered);
 
   let principal = recent[recent.length - 1].principalPaid;
