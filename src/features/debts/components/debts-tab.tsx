@@ -184,8 +184,15 @@ function projectRemaining(mortgage: Mortgage, extraMonthly: number): ProjectedRo
   const subsidyEnd = mortgage.subsidyEndDate ? new Date(mortgage.subsidyEndDate) : null;
   let cursor = new Date(regular[regular.length - 1].date);
 
+  // The linear trend can undershoot the true (more convex, back-loaded)
+  // amortization curve, so it doesn't always reach zero within the nominal
+  // remaining months — capping there silently left a real residual balance
+  // unaccounted for, understating both months remaining and interest
+  // remaining. Let it run past the nominal term if the trend needs longer;
+  // safety cap only guards against a trend that never converges at all.
+  const safetyCapMonths = remainingMonths + 360;
   const rows: ProjectedRow[] = [];
-  for (let month = 0; month < remainingMonths && balance > 1; month++) {
+  for (let month = 0; month < safetyCapMonths && balance > 1; month++) {
     cursor = new Date(cursor);
     cursor.setUTCMonth(cursor.getUTCMonth() + 1);
     const subsidized = subsidyEnd ? cursor <= subsidyEnd : false;
