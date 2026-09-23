@@ -388,6 +388,7 @@ function MortgageCard({ mortgage, onDelete }: { mortgage: Mortgage; onDelete: ()
     [mortgage, extraMonthly, baselineProjection]
   );
   const baseProjSummary = summarizeProjection(baselineProjection);
+  const estimatedTotalMonths = summary.regularCuotasPaid + baseProjSummary.months;
   const extraProjSummary = summarizeProjection(withExtraProjection);
   const interestSaved = baseProjSummary.totalInterest - extraProjSummary.totalInterest;
   const monthsSaved = baseProjSummary.months - extraProjSummary.months;
@@ -500,9 +501,13 @@ function MortgageCard({ mortgage, onDelete }: { mortgage: Mortgage; onDelete: ()
           <span style={{ color: "#9ca3af" }}>
             {t("debts.termEstimated")}: <strong style={{ color: totalExtraPrincipalPaid > 0 ? "#059669" : "#374151" }}>
               {t("debts.termValue", {
-                months: summary.regularCuotasPaid + baseProjSummary.months,
+                months: estimatedTotalMonths,
                 start: fmtDate(mortgage.startDate),
-                end: fmtDate(baseProjSummary.payoffDate),
+                // Computed the same way as the original date (start + N
+                // months) rather than the trend-projection's own date walk
+                // (which drifts from the last real payment's exact day) —
+                // so the months count and the date never contradict.
+                end: fmtDate(addMonths(mortgage.startDate, estimatedTotalMonths).toISOString()),
               })}
             </strong>
           </span>

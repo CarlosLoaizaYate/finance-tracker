@@ -28,10 +28,14 @@ export async function PUT(
   if (body.notes            !== undefined) data.notes            = body.notes;
   if (body.isEstimated      !== undefined) data.isEstimated      = !!body.isEstimated;
 
-  // Entering the bank's real balance is the signal that the real extracto
-  // is now in hand — clear the estimated flag unless the caller explicitly
-  // set it in this same request.
-  if (body.realBalance !== undefined && body.realBalance !== null && body.isEstimated === undefined) {
+  // Correcting the principal (the first, clearest sign the real extracto is
+  // now in hand and the trend-based guess is being replaced) clears the
+  // estimated flag, unless the caller set it explicitly in this request.
+  // realBalance alone does NOT clear it — the bank balance can be checked
+  // any time, independent of whether the principal/interest split has been
+  // corrected yet, and clearing on that alone left rows looking "confirmed"
+  // while their principal/interest were still just guesses.
+  if (body.principalPaid !== undefined && body.isEstimated === undefined) {
     data.isEstimated = false;
   }
 
