@@ -420,6 +420,7 @@ function MortgageCard({ mortgage, onDelete }: { mortgage: Mortgage; onDelete: ()
   );
   const baseProjSummary = summarizeProjection(baselineProjection);
   const estimatedTotalMonths = summary.regularCuotasPaid + baseProjSummary.months;
+  const estimatedPctComplete = estimatedTotalMonths > 0 ? (summary.regularCuotasPaid / estimatedTotalMonths) * 100 : 0;
   const extraProjSummary = summarizeProjection(withExtraProjection);
   const interestSaved = baseProjSummary.totalInterest - extraProjSummary.totalInterest;
   const monthsSaved = baseProjSummary.months - extraProjSummary.months;
@@ -473,6 +474,25 @@ function MortgageCard({ mortgage, onDelete }: { mortgage: Mortgage; onDelete: ()
           <div style={{
             height: "100%", width: `${Math.min(100, summary.pctPaidOff)}%`, borderRadius: 6,
             background: "linear-gradient(90deg,#a78bfa,#7c3aed)", transition: "width .3s",
+          }} />
+        </div>
+      </div>
+
+      {/* Progress bar — current estimate (reflects real extra payments) */}
+      <div style={{ marginBottom: 16 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6 }}>
+          <span style={{ fontSize: 13, fontWeight: 700, color: "#059669" }}>
+            {t("debts.installmentProgress", { count: summary.regularCuotasPaid, total: estimatedTotalMonths })}
+          </span>
+          <span style={{ textAlign: "right" }}>
+            <span style={{ fontSize: 18, fontWeight: 800, color: "#059669" }}>{estimatedPctComplete.toFixed(1)}%</span>
+            <div style={{ fontSize: 10, color: "#9ca3af" }}>{t("debts.pctPaidOffEstimatedLabel")}</div>
+          </span>
+        </div>
+        <div style={{ height: 10, borderRadius: 6, background: "#d1fae5", overflow: "hidden" }}>
+          <div style={{
+            height: "100%", width: `${Math.min(100, estimatedPctComplete)}%`, borderRadius: 6,
+            background: "linear-gradient(90deg,#34d399,#059669)", transition: "width .3s",
           }} />
         </div>
       </div>
