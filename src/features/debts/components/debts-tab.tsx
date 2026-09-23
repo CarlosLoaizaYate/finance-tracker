@@ -166,11 +166,14 @@ interface ProjectedRow {
 // baseline that itself lands exactly on the contracted term.
 function calibratedDeltaPrincipal(mortgage: Mortgage, regular: MortgagePayment[]): number {
   const n = mortgage.termMonths - regular.length;
-  if (n <= 1) return 0;
+  if (n < 1) return 0;
   const regularPrincipalPaid = regular.reduce((s, p) => s + p.principalPaid, 0);
   const noExtraBalance = mortgage.principal - regularPrincipalPaid;
   const a1 = regular[regular.length - 1].principalPaid;
-  return (2 * (noExtraBalance - n * a1)) / (n * (n - 1));
+  // The loop below adds delta BEFORE emitting each row, so the n emitted
+  // principal payments are a1+delta, a1+2*delta, ..., a1+n*delta — an
+  // arithmetic series with spacings 1..n (sum = n*(n+1)/2), not 0..n-1.
+  return (2 * (noExtraBalance - n * a1)) / (n * (n + 1));
 }
 
 function projectRemaining(mortgage: Mortgage, extraMonthly: number): ProjectedRow[] {
@@ -459,7 +462,7 @@ function MortgageCard({ mortgage, onDelete }: { mortgage: Mortgage; onDelete: ()
       <div style={{ marginBottom: 16 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6 }}>
           <span style={{ fontSize: 13, fontWeight: 700, color: "#374151" }}>
-            {t("debts.installmentProgress", { count: summary.regularCuotasPaid + CUOTA_NUMBER_OFFSET, total: mortgage.termMonths })}
+            {t("debts.installmentProgress", { count: summary.regularCuotasPaid, total: mortgage.termMonths })}
           </span>
           <span style={{ textAlign: "right" }}>
             <span style={{ fontSize: 18, fontWeight: 800, color: "#7c3aed" }}>{summary.pctPaidOff.toFixed(1)}%</span>
