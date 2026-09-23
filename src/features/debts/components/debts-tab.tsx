@@ -260,12 +260,16 @@ function projectNoExtraCounterfactual(mortgage: Mortgage): ProjectedRow[] {
   const subsidyEnd = mortgage.subsidyEndDate ? new Date(mortgage.subsidyEndDate) : null;
   let cursor = new Date(regular[regular.length - 1].date);
 
-  // Same month cap as the real-extras projection below, so that when there
-  // are no real extra payments yet (totalExtraPrincipalPaid === 0) both
-  // starting balances and both projections are identical — no artificial gap.
-  const remainingMonths = mortgage.termMonths - regularCuotasPaid;
+  // No hard cap at the nominal term: without the real extras that were
+  // actually made, the loan can genuinely take longer to pay off than the
+  // baseline projection below. When there are no real extras yet the two
+  // starting balances are identical, so this still lands on the same
+  // payoff point as the baseline — the extended cap only matters once
+  // real extras have actually shortened the baseline. Safety cap avoids a
+  // runaway loop if the trend never reaches zero.
+  const safetyCapMonths = mortgage.termMonths - regularCuotasPaid + 360;
   const rows: ProjectedRow[] = [];
-  for (let month = 0; month < remainingMonths && balance > 1; month++) {
+  for (let month = 0; month < safetyCapMonths && balance > 1; month++) {
     cursor = new Date(cursor);
     cursor.setUTCMonth(cursor.getUTCMonth() + 1);
     const subsidized = subsidyEnd ? cursor <= subsidyEnd : false;
@@ -492,6 +496,17 @@ function MortgageCard({ mortgage, onDelete }: { mortgage: Mortgage; onDelete: ()
           <span style={{ color: "#9ca3af" }}>{t("debts.rateCharged")}: <strong style={{ color: "#059669" }}>{mortgage.subsidizedRate.toFixed(2)}%</strong></span>
         )}
         <span style={{ color: "#9ca3af" }}>{t("debts.term")}: <strong style={{ color: "#374151" }}>{t("debts.termValue", { months: mortgage.termMonths, start: fmtDate(mortgage.startDate), end: fmtDate(payoffDate.toISOString()) })}</strong></span>
+        {baseProjSummary.payoffDate && (
+          <span style={{ color: "#9ca3af" }}>
+            {t("debts.termEstimated")}: <strong style={{ color: totalExtraPrincipalPaid > 0 ? "#059669" : "#374151" }}>
+              {t("debts.termValue", {
+                months: summary.regularCuotasPaid + baseProjSummary.months,
+                start: fmtDate(mortgage.startDate),
+                end: fmtDate(baseProjSummary.payoffDate),
+              })}
+            </strong>
+          </span>
+        )}
       </div>
 
       {(mortgage.subsidyRate != null || summary.totalInterestCovered > 0) && (
@@ -648,6 +663,7 @@ const CHART_COLORS = {
   benefit: "#7c3aed",
   balance: "#7c3aed",
   balanceProjected: "#c4b5fd",
+  balanceNoExtra: "#f59e0b",
   realBalance: "#059669",
 };
 
@@ -665,14 +681,29 @@ function MortgageCharts({ mortgage, paymentsWithBalance, paymentYears, summary }
       label: fmtDate(p.date),
       balance: p.balanceAfter,
     }));
-    const projected = projectRemaining(mortgage, 0).map(r => ({
-      cuota: r.cuotaNumber,
-      label: fmtDate(r.date),
-      projectedBalance: r.balanceAfter,
-    }));
-    if (actual.length > 0 && projected.length > 0) {
-      const bridge = { ...actual[actual.length - 1], projectedBalance: actual[actual.length - 1].balance };
-      return [...actual.slice(0, -1), bridge, ...projected];
+    const projected = projectRemaining(mortgage, 0);
+    const noExtra = projectNoExtraCounterfactual(mortgage);
+    // Both projections start from the same "regular cuotas paid so far"
+    // count, so row i of one lines up with row i of the other — zip them
+    // by index instead of by cuota number so a longer no-extra tail (the
+    // loan taking more months without the real extras made) still renders.
+    const maxLen = Math.max(projected.length, noExtra.length);
+    const tail = [];
+    for (let i = 0; i < maxLen; i++) {
+      const p = projected[i];
+      const n = noExtra[i];
+      const base = p ?? n;
+      tail.push({
+        cuota: base.cuotaNumber,
+        label: fmtDate(base.date),
+        ...(p ? { projectedBalance: p.balanceAfter } : {}),
+        ...(n ? { noExtraBalance: n.balanceAfter } : {}),
+      });
+    }
+    if (actual.length > 0 && tail.length > 0) {
+      const lastActual = actual[actual.length - 1];
+      const bridge = { ...lastActual, projectedBalance: lastActual.balance, noExtraBalance: lastActual.balance };
+      return [...actual.slice(0, -1), bridge, ...tail];
     }
     return actual;
   }, [mortgage, paymentsWithBalance]);
@@ -697,10 +728,11 @@ function MortgageCharts({ mortgage, paymentsWithBalance, paymentYears, summary }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const dateLabelFormatter = (_label: any, payload: any) => payload?.[0]?.payload?.label ?? _label;
   const balanceXTicks = useMemo(() => {
+    const maxCuota = Math.max(mortgage.termMonths, ...balanceData.map(d => d.cuota));
     const ticks: number[] = [];
-    for (let c = 5; c <= mortgage.termMonths; c += 5) ticks.push(c);
+    for (let c = 5; c <= maxCuota; c += 5) ticks.push(c);
     return ticks;
-  }, [mortgage.termMonths]);
+  }, [mortgage.termMonths, balanceData]);
   const cuotaTick = (v: number) => `#${v}`;
 
   if (paymentsWithBalance.length === 0) return null;
@@ -724,6 +756,7 @@ function MortgageCharts({ mortgage, paymentsWithBalance, paymentYears, summary }
             <Legend wrapperStyle={{ fontSize: 11 }} />
             <Line type="monotone" dataKey="balance" name={t("debts.chartBalanceActual")} stroke={CHART_COLORS.balance} strokeWidth={2.5} dot={false} isAnimationActive={false} />
             <Line type="monotone" dataKey="projectedBalance" name={t("debts.chartBalanceProjected")} stroke={CHART_COLORS.balanceProjected} strokeWidth={2} strokeDasharray="5 4" dot={false} isAnimationActive={false} />
+            <Line type="monotone" dataKey="noExtraBalance" name={t("debts.chartBalanceNoExtra")} stroke={CHART_COLORS.balanceNoExtra} strokeWidth={2} strokeDasharray="2 3" dot={false} isAnimationActive={false} />
           </ComposedChart>
         </ResponsiveContainer>
       </div>
