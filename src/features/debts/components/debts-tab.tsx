@@ -387,7 +387,16 @@ function MortgageCard({ mortgage, onDelete }: { mortgage: Mortgage; onDelete: ()
   const summary = computeMortgageSummary(mortgage);
   const payoffDate = addMonths(mortgage.startDate, mortgage.termMonths);
 
-  const sortedPayments = [...mortgage.payments].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  // Same-day ties (a cuota and an abono extra on the same date) had no
+  // tiebreaker, so the visible order — and which cuota an extra inherits
+  // its number from — could flip arbitrarily after an unrelated edit. The
+  // cuota always sorts before its same-day extra here, so the extra
+  // correctly inherits THAT cuota's number rather than the previous one.
+  const sortedPayments = [...mortgage.payments].sort((a, b) => {
+    const dateDiff = new Date(a.date).getTime() - new Date(b.date).getTime();
+    if (dateDiff !== 0) return dateDiff;
+    return Number(a.isExtra) - Number(b.isExtra);
+  });
   const paymentsWithBalance = sortedPayments.reduce<PaymentWithBalance[]>((acc, p) => {
     const prevBalance = acc.length > 0 ? acc[acc.length - 1].balanceAfter : mortgage.principal;
     const prevCuota = acc.length > 0 ? acc[acc.length - 1].cuotaNumber : 0;
@@ -624,7 +633,11 @@ function MortgageCard({ mortgage, onDelete }: { mortgage: Mortgage; onDelete: ()
                           <span style={{ color: "#dc2626", fontWeight: 500 }}>{t("debts.colInterest")} <Money amount={yearInterest} /></span>
                         </td>
                       </tr>
-                      {expanded && [...rows].reverse().map(p => (
+                      {expanded && [...rows].sort((a, b) => {
+                        const dateDiff = new Date(b.date).getTime() - new Date(a.date).getTime();
+                        if (dateDiff !== 0) return dateDiff;
+                        return Number(a.isExtra) - Number(b.isExtra);
+                      }).map(p => (
                         <tr key={p.id} style={{ borderTop: "1px solid #f3f4f6" }}>
                           <td style={{ padding: "7px 10px", color: "#9ca3af" }}>#{p.cuotaNumber}</td>
                           <td style={{ padding: "7px 10px" }}>{fmtDate(p.date)}</td>
