@@ -388,10 +388,12 @@ function MortgageCard({ mortgage, onDelete }: { mortgage: Mortgage; onDelete: ()
   const payoffDate = addMonths(mortgage.startDate, mortgage.termMonths);
 
   // Same-day ties (a cuota and an abono extra on the same date) had no
-  // tiebreaker, so the visible order — and which cuota an extra inherits
-  // its number from — could flip arbitrarily after an unrelated edit. The
-  // cuota always sorts before its same-day extra here, so the extra
-  // correctly inherits THAT cuota's number rather than the previous one.
+  // tiebreaker, so which cuota an extra inherits its number from could
+  // flip arbitrarily after an unrelated edit. The cuota always sorts
+  // before its same-day extra here, so the extra correctly inherits THAT
+  // cuota's number rather than the previous one. This is independent of
+  // the DISPLAYED row order below, which is sorted separately (extra
+  // shown above its cuota, by request).
   const sortedPayments = [...mortgage.payments].sort((a, b) => {
     const dateDiff = new Date(a.date).getTime() - new Date(b.date).getTime();
     if (dateDiff !== 0) return dateDiff;
@@ -636,7 +638,7 @@ function MortgageCard({ mortgage, onDelete }: { mortgage: Mortgage; onDelete: ()
                       {expanded && [...rows].sort((a, b) => {
                         const dateDiff = new Date(b.date).getTime() - new Date(a.date).getTime();
                         if (dateDiff !== 0) return dateDiff;
-                        return Number(a.isExtra) - Number(b.isExtra);
+                        return Number(b.isExtra) - Number(a.isExtra);
                       }).map(p => (
                         <tr key={p.id} style={{ borderTop: "1px solid #f3f4f6" }}>
                           <td style={{ padding: "7px 10px", color: "#9ca3af" }}>#{p.cuotaNumber}</td>
