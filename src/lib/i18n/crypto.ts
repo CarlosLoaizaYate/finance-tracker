@@ -26,6 +26,10 @@ export const cryptoEn = {
   valueInUsd: "Value in USD",
   growthSincePurchase: "Growth since purchase",
 
+  solTitle: "SOL",
+  avgBuyPricePerSol: "Avg. buy price (per SOL)",
+  solPrice: "SOL price",
+
   ratesTitle: "Rates",
   lastUpdated: "Last updated",
   daysAgoToday: "today",
@@ -33,10 +37,12 @@ export const cryptoEn = {
   daysAgoMany: "{{days}} days ago",
   usdCopRateInline: "USD/COP:",
   btcInline: "BTC:",
+  solInline: "SOL:",
   updateRates: "+ Update rates",
   colDate: "Date",
   colUsdCop: "USD/COP",
   colBtcUsd: "BTC (USD)",
+  colSolUsd: "SOL (USD)",
   colUsdwBalance: "USDW balance",
 
   usdwPurchasesTitle: "USDW purchases (COP → USDW)",
@@ -49,9 +55,11 @@ export const cryptoEn = {
   colNotes: "Notes",
 
   btcExchangesTitle: "BTC exchanges (USDW → BTC)",
+  solExchangesTitle: "SOL exchanges (USDW → SOL)",
   addExchange: "+ Add exchange",
   colUsdwIn: "USDW in",
   colBtcReceived: "BTC received",
+  colSolReceived: "SOL received",
 
   clickToEdit: "Click to edit",
 
@@ -67,11 +75,13 @@ export const cryptoEn = {
   availableLabel: "· available",
   commissionUsdwLabel: "Commission (USDW)",
   btcPriceUsdwLabel: "BTC price (USDW)",
+  solPriceUsdwLabel: "SOL price (USDW)",
   onlyAvailablePrefix: "Only",
   onlyAvailableSuffix: "available — reduce the amount.",
 
   usdCopRateLabel: "USD/COP rate",
   btcPriceUsdLabel: "BTC price (USD)",
+  solPriceUsdLabel: "SOL price (USD)",
   usdwBalanceNote: "· optional, for interest earned",
 
   placeholderCopAmount: "500.000,50",
@@ -79,6 +89,8 @@ export const cryptoEn = {
   placeholderUsdwAmount: "120.50",
   placeholderBtcPrice: "65000",
   placeholderBtcReceived: "0.00185",
+  placeholderSolPrice: "140",
+  placeholderSolReceived: "0.85",
   placeholderUsdCopRate: "4.100,50",
   placeholderUsdwBalance: "e.g. 121.35",
 };
@@ -111,6 +123,10 @@ export const cryptoEs: typeof cryptoEn = {
   valueInUsd: "Valor en USD",
   growthSincePurchase: "Crecimiento desde la compra",
 
+  solTitle: "SOL",
+  avgBuyPricePerSol: "Precio de compra promedio (por SOL)",
+  solPrice: "Precio de SOL",
+
   ratesTitle: "Tasas",
   lastUpdated: "Última actualización",
   daysAgoToday: "hoy",
@@ -118,10 +134,12 @@ export const cryptoEs: typeof cryptoEn = {
   daysAgoMany: "hace {{days}} días",
   usdCopRateInline: "USD/COP:",
   btcInline: "BTC:",
+  solInline: "SOL:",
   updateRates: "+ Actualizar tasas",
   colDate: "Fecha",
   colUsdCop: "USD/COP",
   colBtcUsd: "BTC (USD)",
+  colSolUsd: "SOL (USD)",
   colUsdwBalance: "Balance USDW",
 
   usdwPurchasesTitle: "Compras de USDW (COP → USDW)",
@@ -134,9 +152,11 @@ export const cryptoEs: typeof cryptoEn = {
   colNotes: "Notas",
 
   btcExchangesTitle: "Cambios de BTC (USDW → BTC)",
+  solExchangesTitle: "Cambios de SOL (USDW → SOL)",
   addExchange: "+ Agregar cambio",
   colUsdwIn: "USDW entrante",
   colBtcReceived: "BTC recibido",
+  colSolReceived: "SOL recibido",
 
   clickToEdit: "Clic para editar",
 
@@ -152,11 +172,13 @@ export const cryptoEs: typeof cryptoEn = {
   availableLabel: "· disponible",
   commissionUsdwLabel: "Comisión (USDW)",
   btcPriceUsdwLabel: "Precio de BTC (USDW)",
+  solPriceUsdwLabel: "Precio de SOL (USDW)",
   onlyAvailablePrefix: "Solo hay",
   onlyAvailableSuffix: "disponible — reduce el monto.",
 
   usdCopRateLabel: "Tasa USD/COP",
   btcPriceUsdLabel: "Precio de BTC (USD)",
+  solPriceUsdLabel: "Precio de SOL (USD)",
   usdwBalanceNote: "· opcional, para interés ganado",
 
   placeholderCopAmount: "500.000,50",
@@ -164,6 +186,8 @@ export const cryptoEs: typeof cryptoEn = {
   placeholderUsdwAmount: "120.50",
   placeholderBtcPrice: "65000",
   placeholderBtcReceived: "0.00185",
+  placeholderSolPrice: "140",
+  placeholderSolReceived: "0.85",
   placeholderUsdCopRate: "4.100,50",
   placeholderUsdwBalance: "ej. 121.35",
 };

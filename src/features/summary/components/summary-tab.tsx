@@ -18,6 +18,7 @@ import {
   useFixedDepositGroups,
   useUsdwPurchases,
   useBtcPurchases,
+  useSolPurchases,
   useCryptoSnapshots,
   useCryptoSettings,
   useCardInstallments,
@@ -250,6 +251,7 @@ function InvestmentsSummarySection() {
   const { data: depositGroups = [] } = useFixedDepositGroups();
   const { data: usdwPurchases = [] } = useUsdwPurchases();
   const { data: btcPurchases = [] } = useBtcPurchases();
+  const { data: solPurchases = [] } = useSolPurchases();
   const { data: cryptoSnapshots = [] } = useCryptoSnapshots();
   const { data: cryptoSettings } = useCryptoSettings();
 
@@ -275,16 +277,16 @@ function InvestmentsSummarySection() {
       }, 0),
     [dbStocks, txByInv]);
 
-  // Crypto (USDW + BTC)
+  // Crypto (USDW + BTC + SOL)
   const cryptoSummary = useMemo(
-    () => computeCryptoSummary(usdwPurchases, btcPurchases, cryptoSnapshots),
-    [usdwPurchases, btcPurchases, cryptoSnapshots]
+    () => computeCryptoSummary(usdwPurchases, btcPurchases, cryptoSnapshots, solPurchases),
+    [usdwPurchases, btcPurchases, cryptoSnapshots, solPurchases]
   );
   const cryptoInvested = useMemo(
     () => usdwPurchases.reduce((s, p) => s + p.copAmount, 0),
     [usdwPurchases]
   );
-  const cryptoCurrentValue = cryptoSummary.usdValueCop + cryptoSummary.btcValueCop;
+  const cryptoCurrentValue = cryptoSummary.usdValueCop + cryptoSummary.btcValueCop + cryptoSummary.solValueCop;
   const cryptoSellCommission = effectiveSellCommission(
     cryptoSettings?.sellCommission ?? 0, cryptoCurrentValue, cryptoSettings?.commissionRate ?? 0.001
   );
@@ -353,7 +355,7 @@ function InvestmentsSummarySection() {
       .reduce((s, inv) => s + inv.sellCommission, 0),
     [dbStocks, txByInv]);
 
-  const hasCrypto = usdwPurchases.length > 0 || btcPurchases.length > 0;
+  const hasCrypto = usdwPurchases.length > 0 || btcPurchases.length > 0 || solPurchases.length > 0;
   const totalInvested = stocksInvested + fundsInvested + cdtsInvested + (hasCrypto ? cryptoInvested : 0);
   const hasStocks = dbStocks.some(inv => txByInv[inv.id]?.length);
   const hasFunds = funds.length > 0;
@@ -523,6 +525,7 @@ function InvestmentChartsSection() {
   const { data: depositGroups = [] } = useFixedDepositGroups();
   const { data: usdwPurchases = [] } = useUsdwPurchases();
   const { data: btcPurchases = [] } = useBtcPurchases();
+  const { data: solPurchases = [] } = useSolPurchases();
   const { data: cryptoSnapshots = [] } = useCryptoSnapshots();
 
   const txByInv = useMemo(() => {
@@ -580,15 +583,15 @@ function InvestmentChartsSection() {
       result.push({ name: t("summary.cdts"), color: "#059669", invested, current });
     }
 
-    if (usdwPurchases.length > 0 || btcPurchases.length > 0) {
+    if (usdwPurchases.length > 0 || btcPurchases.length > 0 || solPurchases.length > 0) {
       const invested = usdwPurchases.reduce((s, p) => s + p.copAmount, 0);
-      const summary = computeCryptoSummary(usdwPurchases, btcPurchases, cryptoSnapshots);
-      result.push({ name: t("summary.crypto"), color: "#f59e0b", invested, current: summary.usdValueCop + summary.btcValueCop });
+      const summary = computeCryptoSummary(usdwPurchases, btcPurchases, cryptoSnapshots, solPurchases);
+      result.push({ name: t("summary.crypto"), color: "#f59e0b", invested, current: summary.usdValueCop + summary.btcValueCop + summary.solValueCop });
     }
 
     return result;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dbStocks, txByInv, priceSnapByInv, funds, depositGroups, usdwPurchases, btcPurchases, cryptoSnapshots, language]);
+  }, [dbStocks, txByInv, priceSnapByInv, funds, depositGroups, usdwPurchases, btcPurchases, solPurchases, cryptoSnapshots, language]);
 
   if (rows.length === 0) return null;
 

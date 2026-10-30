@@ -35,11 +35,16 @@ export const fmtUsd = (n: number): string =>
 export const fmtBtc = (n: number): string =>
   n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 8 }) + " BTC";
 
-export type MoneyCurrency = "COP" | "USDW" | "USD" | "BTC";
+/** Format a SOL quantity with enough precision to show small fractions */
+export const fmtSol = (n: number): string =>
+  n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 8 }) + " SOL";
+
+export type MoneyCurrency = "COP" | "USDW" | "USD" | "BTC" | "SOL";
 
 /** Formats an amount with its currency code shown next to the value (e.g. "$500.000 COP"). */
 export const fmtMoney = (amount: number, currency: MoneyCurrency): string => {
   if (currency === "BTC") return fmtBtc(amount);
+  if (currency === "SOL") return fmtSol(amount);
   if (currency === "COP") return `${fmt(amount)} COP`;
   return `${fmtUsd(amount)} ${currency}`;
 };

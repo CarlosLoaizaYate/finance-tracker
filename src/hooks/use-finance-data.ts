@@ -762,6 +762,17 @@ export interface BtcPurchase {
   createdAt: string;
 }
 
+export interface SolPurchase {
+  id: string;
+  date: string;
+  usdwAmount: number;
+  commissionUsdw: number;
+  solPriceUsdw: number;
+  solAmount: number;
+  notes: string;
+  createdAt: string;
+}
+
 export interface CryptoSnapshot {
   id: string;
   day: number;
@@ -769,6 +780,7 @@ export interface CryptoSnapshot {
   year: number;
   usdCopRate: number;
   btcPriceUsd: number;
+  solPriceUsd: number;
   usdwBalance: number | null;
   createdAt: string;
 }
@@ -827,6 +839,36 @@ export function useDeleteBtcPurchase() {
   });
 }
 
+export function useSolPurchases() {
+  return useQuery<SolPurchase[]>({
+    queryKey: ["sol-purchases"],
+    queryFn: () => get("/api/sol-purchases"),
+  });
+}
+
+export function useAddSolPurchase() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: {
+      date: string;
+      usdwAmount: number;
+      commissionUsdw: number;
+      solPriceUsdw: number;
+      solAmount: number;
+      notes?: string;
+    }) => post("/api/sol-purchases", data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["sol-purchases"] }),
+  });
+}
+
+export function useDeleteSolPurchase() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => del(`/api/sol-purchases/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["sol-purchases"] }),
+  });
+}
+
 export function useCryptoSnapshots() {
   return useQuery<CryptoSnapshot[]>({
     queryKey: ["crypto-snapshots"],
@@ -837,7 +879,7 @@ export function useCryptoSnapshots() {
 export function useUpsertCryptoSnapshot() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: { day: number; month: number; year: number; usdCopRate: number; btcPriceUsd: number; usdwBalance?: number | null }) =>
+    mutationFn: (data: { day: number; month: number; year: number; usdCopRate: number; btcPriceUsd: number; solPriceUsd?: number; usdwBalance?: number | null }) =>
       put("/api/crypto-snapshots", data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["crypto-snapshots"] }),
   });

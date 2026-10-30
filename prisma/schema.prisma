@@ -30,6 +30,7 @@ model User {
   fixedDepositSnapshots  FixedDepositSnapshot[]
   usdwPurchases          UsdwPurchase[]
   btcPurchases           BtcPurchase[]
+  solPurchases           SolPurchase[]
   cryptoSnapshots        CryptoSnapshot[]
   mortgages              Mortgage[]
   mortgagePayments       MortgagePayment[]
@@ -292,6 +293,19 @@ model BtcPurchase {
   user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
+model SolPurchase {
+  id             String   @id @default(uuid())
+  date           DateTime
+  usdwAmount     Float    // USDW handed over for this exchange (includes commission)
+  commissionUsdw Float    @default(0)
+  solPriceUsdw   Float    // price of 1 SOL in USDW at the time of this exchange
+  solAmount      Float    // SOL actually received
+  notes          String   @default("")
+  createdAt      DateTime @default(now())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
 model CryptoSnapshot {
   id          String   @id @default(uuid())
   day         Int      @default(1)
@@ -299,6 +313,7 @@ model CryptoSnapshot {
   year        Int
   usdCopRate  Float    // COP per 1 USD
   btcPriceUsd Float    // USD per 1 BTC
+  solPriceUsd Float    @default(0) // USD per 1 SOL
   usdwBalance Float?   // actual USDW balance on this date, if you want to track interest earned beyond purchases/exchanges
   createdAt   DateTime @default(now())
   userId      String
