@@ -16,6 +16,7 @@ import {
   useStockPriceSnapshots,
   useUsdwPurchases,
   useBtcPurchases,
+  useSolPurchases,
   useCryptoSnapshots,
   useCryptoSettings,
   type FixedDepositGroup,
@@ -258,6 +259,7 @@ function SummaryContent({
   const { data: funds = [] } = useFunds();
   const { data: usdwPurchases = [] } = useUsdwPurchases();
   const { data: btcPurchases = [] } = useBtcPurchases();
+  const { data: solPurchases = [] } = useSolPurchases();
   const { data: cryptoSnapshots = [] } = useCryptoSnapshots();
   const { data: cryptoSettings } = useCryptoSettings();
 
@@ -319,19 +321,21 @@ function SummaryContent({
     }), [funds]);
 
   const cryptoSummary = useMemo(
-    () => computeCryptoSummary(usdwPurchases, btcPurchases, cryptoSnapshots),
-    [usdwPurchases, btcPurchases, cryptoSnapshots]
+    () => computeCryptoSummary(usdwPurchases, btcPurchases, cryptoSnapshots, solPurchases),
+    [usdwPurchases, btcPurchases, cryptoSnapshots, solPurchases]
   );
 
   const cryptoItems = useMemo((): CategoryItem[] => {
-    if (usdwPurchases.length === 0 && btcPurchases.length === 0) return [];
+    if (usdwPurchases.length === 0 && btcPurchases.length === 0 && solPurchases.length === 0) return [];
 
     // Cost basis (FIFO): each portion's actual peso cost, from computeSummary.
     const usdwCurrent = cryptoSummary.usdValueCop;
     const btcCurrent = cryptoSummary.btcValueCop;
-    const totalCurrent = usdwCurrent + btcCurrent;
+    const solCurrent = cryptoSummary.solValueCop;
+    const totalCurrent = usdwCurrent + btcCurrent + solCurrent;
     const totalSellComm = effectiveSellCommission(cryptoSettings?.sellCommission ?? 0, totalCurrent, cryptoSettings?.commissionRate ?? 0.001);
     const usdwSellComm = totalCurrent > 0 ? Math.round(totalSellComm * (usdwCurrent / totalCurrent)) : 0;
+    const btcSellComm = totalCurrent > 0 ? Math.round(totalSellComm * (btcCurrent / totalCurrent)) : 0;
 
     const items: CategoryItem[] = [];
     if (usdwPurchases.length > 0) {
@@ -345,11 +349,18 @@ function SummaryContent({
       items.push({
         id: "crypto-btc", name: "BTC", color: "#f7931a",
         invested: cryptoSummary.btcCostBasisCop, currentValue: btcCurrent,
-        sellCommission: totalSellComm - usdwSellComm,
+        sellCommission: solPurchases.length > 0 ? btcSellComm : totalSellComm - usdwSellComm,
+      });
+    }
+    if (solPurchases.length > 0) {
+      items.push({
+        id: "crypto-sol", name: "SOL", color: "#9945ff",
+        invested: cryptoSummary.solCostBasisCop, currentValue: solCurrent,
+        sellCommission: totalSellComm - usdwSellComm - btcSellComm,
       });
     }
     return items;
-  }, [usdwPurchases, btcPurchases, cryptoSummary, cryptoSettings]);
+  }, [usdwPurchases, btcPurchases, solPurchases, cryptoSummary, cryptoSettings]);
 
   // Form state
   const [showForm, setShowForm] = useState(false);
@@ -368,7 +379,7 @@ function SummaryContent({
   useEffect(() => {
     if (hiddenInitialized) return;
     const hasData = Object.keys(txByInv).length > 0 || funds.length > 0 || depositGroups.length > 0
-      || usdwPurchases.length > 0 || btcPurchases.length > 0;
+      || usdwPurchases.length > 0 || btcPurchases.length > 0 || solPurchases.length > 0;
     if (!hasData) return;
     const initialHidden = new Set<string>();
     Object.keys(txByInv).forEach(invId => initialHidden.add(`stock_${invId}`));
@@ -376,9 +387,10 @@ function SummaryContent({
     depositGroups.forEach(g => initialHidden.add(`cdt_${g.id}`));
     if (usdwPurchases.length > 0) initialHidden.add("crypto_usdw");
     if (btcPurchases.length > 0) initialHidden.add("crypto_btc");
+    if (solPurchases.length > 0) initialHidden.add("crypto_sol");
     setHiddenLines(initialHidden);
     setHiddenInitialized(true);
-  }, [txByInv, funds, depositGroups, usdwPurchases, btcPurchases, hiddenInitialized]);
+  }, [txByInv, funds, depositGroups, usdwPurchases, btcPurchases, solPurchases, hiddenInitialized]);
 
   // IDs of investments that are managed by the Stock Transactions module
   const stockInvestmentIds = useMemo(
@@ -524,16 +536,17 @@ function SummaryContent({
       tv += cdtTotalVal;
       if (depositGroups.length > 0) row["CDTs"] = cdtTotalVal;
 
-      // Crypto (USDW + BTC): only from the month of the first purchase onward
-      if (usdwPurchases.length > 0 || btcPurchases.length > 0) {
-        const { invested: cryptoInvested, value: cryptoVal, usdwValue, btcValue } =
-          computeCryptoValueAtMonth(usdwPurchases, btcPurchases, cryptoSnapshots, i);
+      // Crypto (USDW + BTC + SOL): only from the month of the first purchase onward
+      if (usdwPurchases.length > 0 || btcPurchases.length > 0 || solPurchases.length > 0) {
+        const { invested: cryptoInvested, value: cryptoVal, usdwValue, btcValue, solValue } =
+          computeCryptoValueAtMonth(usdwPurchases, btcPurchases, cryptoSnapshots, i, solPurchases);
         if (cryptoInvested > 0 || cryptoVal > 0) {
           ti += cryptoInvested;
           tv += cryptoVal;
           row["Crypto"] = cryptoVal;
           if (usdwPurchases.length > 0) row["crypto_usdw"] = usdwValue;
           if (btcPurchases.length > 0) row["crypto_btc"] = btcValue;
+          if (solPurchases.length > 0) row["crypto_sol"] = solValue;
         }
       }
 
@@ -546,7 +559,7 @@ function SummaryContent({
       data.push(row);
     }
     return data;
-  }, [invs, chartFrom, chartTo, txByInv, priceSnapByInv, funds, depositGroups, usdwPurchases, btcPurchases, cryptoSnapshots]);
+  }, [invs, chartFrom, chartTo, txByInv, priceSnapByInv, funds, depositGroups, usdwPurchases, btcPurchases, solPurchases, cryptoSnapshots]);
 
   return (
     <>
@@ -584,7 +597,7 @@ function SummaryContent({
             ...(Object.keys(txByInv).some(id => dbStocks.find(d => d.id === id)) ? [{ key: "Stocks Total", name: t("investmentsOverview.legendStocks"), color: "#7c3aed" }] : []),
             ...(funds.length > 0 ? [{ key: "Funds Total", name: t("investmentsOverview.legendFunds"), color: "#059669" }] : []),
             ...(depositGroups.length > 0 ? [{ key: "CDTs", name: t("investmentsOverview.legendCdts"), color: "#0891b2" }] : []),
-            ...(usdwPurchases.length > 0 || btcPurchases.length > 0 ? [{ key: "Crypto", name: t("investmentsOverview.legendCrypto"), color: "#f59e0b" }] : []),
+            ...(usdwPurchases.length > 0 || btcPurchases.length > 0 || solPurchases.length > 0 ? [{ key: "Crypto", name: t("investmentsOverview.legendCrypto"), color: "#f59e0b" }] : []),
           ].map(({ key, name, color }) => {
             const visible = !hiddenLines.has(key);
             return (
@@ -602,7 +615,7 @@ function SummaryContent({
           })}
         </div>
         {/* Line toggles — individual investments */}
-        {(Object.keys(txByInv).length > 0 || funds.length > 0 || depositGroups.length > 0 || usdwPurchases.length > 0 || btcPurchases.length > 0) && (
+        {(Object.keys(txByInv).length > 0 || funds.length > 0 || depositGroups.length > 0 || usdwPurchases.length > 0 || btcPurchases.length > 0 || solPurchases.length > 0) && (
           <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 14, alignItems: "center" }}>
             <span style={{ fontSize: 10, color: "#9ca3af", marginRight: 4, fontWeight: 600 }}>{t("investmentsOverview.individualLabel")}</span>
             {[
@@ -615,6 +628,7 @@ function SummaryContent({
               ...depositGroups.map((g, gi) => ({ key: `cdt_${g.id}`, name: g.name, color: CDT_COLORS[gi % CDT_COLORS.length] })),
               ...(usdwPurchases.length > 0 ? [{ key: "crypto_usdw", name: "USDW", color: "#f59e0b" }] : []),
               ...(btcPurchases.length > 0 ? [{ key: "crypto_btc", name: "BTC", color: "#f7931a" }] : []),
+              ...(solPurchases.length > 0 ? [{ key: "crypto_sol", name: "SOL", color: "#9945ff" }] : []),
             ].map(({ key, name, color }) => {
               const visible = !hiddenLines.has(key);
               return (
@@ -666,7 +680,7 @@ function SummaryContent({
                   stroke="#0891b2" strokeWidth={2} strokeDasharray="5 3" dot={{ r: 2 }}
                   hide={hiddenLines.has("CDTs")} />
               )}
-              {(usdwPurchases.length > 0 || btcPurchases.length > 0) && (
+              {(usdwPurchases.length > 0 || btcPurchases.length > 0 || solPurchases.length > 0) && (
                 <Line type="monotone" dataKey="Crypto" name={t("investmentsOverview.legendCrypto")}
                   stroke="#f59e0b" strokeWidth={2} strokeDasharray="5 3" dot={{ r: 2 }}
                   hide={hiddenLines.has("Crypto")} />
@@ -699,7 +713,7 @@ function SummaryContent({
                   stroke={CDT_COLORS[gi % CDT_COLORS.length]} strokeWidth={1.5} dot={{ r: 2 }}
                   hide={hiddenLines.has(`cdt_${g.id}`)} />
               ))}
-              {/* Individual USDW / BTC lines */}
+              {/* Individual USDW / BTC / SOL lines */}
               {usdwPurchases.length > 0 && (
                 <Line type="monotone" dataKey="crypto_usdw" name="USDW"
                   stroke="#f59e0b" strokeWidth={1.5} dot={{ r: 2 }}
@@ -709,6 +723,11 @@ function SummaryContent({
                 <Line type="monotone" dataKey="crypto_btc" name="BTC"
                   stroke="#f7931a" strokeWidth={1.5} dot={{ r: 2 }}
                   hide={hiddenLines.has("crypto_btc")} />
+              )}
+              {solPurchases.length > 0 && (
+                <Line type="monotone" dataKey="crypto_sol" name="SOL"
+                  stroke="#9945ff" strokeWidth={1.5} dot={{ r: 2 }}
+                  hide={hiddenLines.has("crypto_sol")} />
               )}
             </LineChart>
           </ResponsiveContainer>

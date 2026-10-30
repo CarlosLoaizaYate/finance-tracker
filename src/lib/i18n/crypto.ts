@@ -1,5 +1,5 @@
 export const cryptoEn = {
-  positionTitle: "Position (USDW + BTC)",
+  positionTitle: "Position (USDW + BTC + SOL)",
   invested: "Invested",
   currentValue: "Current value",
   gainLoss: "Gain / Loss",
@@ -96,7 +96,7 @@ export const cryptoEn = {
 };
 
 export const cryptoEs: typeof cryptoEn = {
-  positionTitle: "Posición (USDW + BTC)",
+  positionTitle: "Posición (USDW + BTC + SOL)",
   invested: "Invertido",
   currentValue: "Valor actual",
   gainLoss: "Ganancia / Pérdida",
