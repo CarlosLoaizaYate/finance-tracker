@@ -230,7 +230,9 @@ export function computeSummary(
 
   // Same math as BTC above, for SOL.
   const avgSolBuyPriceUsdw = totalSolBought > 0 ? totalUsdwSpentOnSol / totalSolBought : 0;
-  const solPriceUsdNow = latestSnapshot?.solPriceUsd ?? avgSolBuyPriceUsdw;
+  // solPriceUsd defaults to 0 on snapshots saved before a SOL price was ever entered — treat that
+  // the same as "not set" (unlike BTC's price, which was always a required, real value).
+  const solPriceUsdNow = latestSnapshot?.solPriceUsd ? latestSnapshot.solPriceUsd : avgSolBuyPriceUsdw;
   const solValueUsd = totalSolBought * solPriceUsdNow;
   const solGrowthPct = totalUsdwSpentOnSol > 0 ? ((solValueUsd / totalUsdwSpentOnSol) - 1) * 100 : 0;
   const solValueCop = solValueUsd * usdCopRateNow;
@@ -320,7 +322,10 @@ export function computeCryptoValueAtMonth(
 
   const usdwValue = latest ? usdwHeld * latest.usdCopRate : usdwHeld * avgHeldRate;
   const btcValue = latest ? btcHeld * latest.btcPriceUsd * latest.usdCopRate : (costBasisByKind.btc ?? 0);
-  const solValue = latest ? solHeld * latest.solPriceUsd * latest.usdCopRate : (costBasisByKind.sol ?? 0);
+  // Same "0 means not set" fallback as solPriceUsdNow above.
+  const solValue = latest && latest.solPriceUsd > 0
+    ? solHeld * latest.solPriceUsd * latest.usdCopRate
+    : (costBasisByKind.sol ?? 0);
   return { invested, value: usdwValue + btcValue + solValue, usdwValue, btcValue, solValue };
 }
 
