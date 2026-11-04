@@ -11,10 +11,11 @@ export async function POST(request: NextRequest) {
     const { fundId, day, month, year } = body;
     const currentValue = Number(body.currentValue);
     const contribution = Number(body.contribution ?? 0);
+    const withdrawal = Number(body.withdrawal ?? 0);
     if (!fundId || !day || !month || !year || isNaN(currentValue)) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
-    console.log("[fund-snapshots] POST received:", { currentValue: body.currentValue, parsed: currentValue, contribution: body.contribution, parsedContrib: contribution });
+    console.log("[fund-snapshots] POST received:", { currentValue: body.currentValue, parsed: currentValue, contribution: body.contribution, parsedContrib: contribution, withdrawal: body.withdrawal });
 
     const fund = await prisma.fund.findUnique({ where: { id: fundId } });
     if (!fund || fund.userId !== user.id) {
@@ -22,7 +23,7 @@ export async function POST(request: NextRequest) {
     }
 
     const snapshot = await prisma.fundSnapshot.create({
-      data: { fundId, day, month, year, currentValue: Math.round(currentValue), contribution: Math.round(contribution), userId: user.id },
+      data: { fundId, day, month, year, currentValue: Math.round(currentValue), contribution: Math.round(contribution), withdrawal: Math.round(withdrawal), userId: user.id },
     });
 
     return NextResponse.json(snapshot, { status: 201 });

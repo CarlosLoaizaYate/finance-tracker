@@ -31,6 +31,7 @@ import {
 } from "@/hooks/use-finance-data";
 import { computeSummary as computeCryptoSummary, computeCryptoValueAtMonth, effectiveSellCommission } from "./crypto-tab";
 import { computeStockPosition } from "./stock-transactions-tab";
+import { buildFundAccounting } from "./funds-tab";
 import { useDashboardStore } from "@/stores/dashboard-store";
 import { MONTHS } from "@/lib/constants";
 import { fmt, gainPc } from "@/lib/formatters";
@@ -328,8 +329,7 @@ function SummaryContent({
 
   const fundItems = useMemo((): CategoryItem[] =>
     funds.map(f => {
-      const totalContribs = f.snapshots.reduce((s, x) => s + x.contribution, 0);
-      const invested = f.baseCapital + totalContribs;
+      const invested = buildFundAccounting(f.baseCapital, f.snapshots).totalInvested;
       const sorted = [...f.snapshots].sort((a, b) => (b.year * 12 + b.month) - (a.year * 12 + a.month));
       const currentValue = sorted[0]?.currentValue ?? null;
       return { id: f.id, name: f.name, color: f.color, label: f.type?.name, invested, currentValue };

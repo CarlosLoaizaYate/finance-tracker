@@ -37,6 +37,7 @@ import Badge from "@/components/ui/badge";
 import Money from "@/components/ui/money";
 import { computeSummary as computeCryptoSummary, effectiveSellCommission } from "@/features/investments/components/crypto-tab";
 import { computeStockPosition } from "@/features/investments/components/stock-transactions-tab";
+import { buildFundAccounting } from "@/features/investments/components/funds-tab";
 import { useTranslation } from "@/hooks/use-translation";
 
 export default function SummaryTab() {
@@ -323,7 +324,7 @@ function InvestmentsSummarySection() {
 
   // Funds
   const fundsInvested = useMemo(() =>
-    funds.reduce((s, f) => s + f.baseCapital + f.snapshots.reduce((t, x) => t + x.contribution, 0), 0),
+    funds.reduce((s, f) => s + buildFundAccounting(f.baseCapital, f.snapshots).totalInvested, 0),
     [funds]);
 
   const fundsCurrentValue = useMemo(() => {
@@ -331,7 +332,7 @@ function InvestmentsSummarySection() {
     let total = 0;
     for (const f of funds) {
       const sorted = [...f.snapshots].sort((a, b) => (b.year * 12 + b.month) - (a.year * 12 + a.month));
-      total += sorted[0]?.currentValue ?? (f.baseCapital + f.snapshots.reduce((s, x) => s + x.contribution, 0));
+      total += sorted[0]?.currentValue ?? buildFundAccounting(f.baseCapital, f.snapshots).totalInvested;
     }
     return total;
   }, [funds]);
@@ -578,10 +579,10 @@ function InvestmentChartsSection() {
     }
 
     if (funds.length > 0) {
-      const invested = funds.reduce((s, f) => s + f.baseCapital + f.snapshots.reduce((t, x) => t + x.contribution, 0), 0);
+      const invested = funds.reduce((s, f) => s + buildFundAccounting(f.baseCapital, f.snapshots).totalInvested, 0);
       const current = funds.reduce((s, f) => {
         const sorted = [...f.snapshots].sort((a, b) => (b.year * 12 + b.month) - (a.year * 12 + a.month));
-        return s + (sorted[0]?.currentValue ?? (f.baseCapital + f.snapshots.reduce((t, x) => t + x.contribution, 0)));
+        return s + (sorted[0]?.currentValue ?? buildFundAccounting(f.baseCapital, f.snapshots).totalInvested);
       }, 0);
       result.push({ name: t("summary.funds"), color: "#0891b2", invested, current });
     }

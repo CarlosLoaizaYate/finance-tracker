@@ -592,6 +592,7 @@ export interface FundSnapshot {
   year: number;
   currentValue: number;
   contribution: number;
+  withdrawal: number;
   createdAt: string;
 }
 
@@ -634,7 +635,7 @@ export function useDeleteFund() {
 export function useUpsertFundSnapshot() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: { fundId: string; day: number; month: number; year: number; currentValue: number; contribution: number }) =>
+    mutationFn: (data: { fundId: string; day: number; month: number; year: number; currentValue: number; contribution: number; withdrawal?: number }) =>
       post("/api/fund-snapshots", data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["funds"] }),
   });

@@ -237,6 +237,7 @@ model FundSnapshot {
   year         Int
   currentValue Int
   contribution Int      @default(0)
+  withdrawal   Int      @default(0)
   createdAt    DateTime @default(now())
   userId       String
   fund         Fund     @relation(fields: [fundId], references: [id], onDelete: Cascade)

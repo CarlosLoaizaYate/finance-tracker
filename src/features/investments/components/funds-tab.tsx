@@ -33,6 +33,8 @@ function GainBadge({ gain, pct }: { gain: number; pct: number }) {
 }
 
 // Cumulative invested strictly before a date (for form preview — no id/createdAt available yet).
+// Net of withdrawals: taking money out reduces what you still have "in" the fund, same as it
+// would for contributions in reverse.
 function cumulativeInvestedBefore(baseCapital: number, snapshots: FundSnapshot[], year: number, month: number, day: number): number {
     return baseCapital + snapshots
         .filter((s) => {
@@ -40,12 +42,22 @@ function cumulativeInvestedBefore(baseCapital: number, snapshots: FundSnapshot[]
             const tAbs = absMonth(year, month);
             return sAbs < tAbs || (sAbs === tAbs && s.day < day);
         })
-        .reduce((sum, s) => sum + s.contribution, 0);
+        .reduce((sum, s) => sum + s.contribution - s.withdrawal, 0);
 }
 
-// Build a map of { snapId → cumulative invested up to that entry } using chronological order.
-// Uses createdAt as tiebreaker for same day; avoids timestamp precision issues by falling back to id.
-function buildInvestedMap(baseCapital: number, snapshots: FundSnapshot[]): Map<string, number> {
+interface FundAccounting {
+    investedMap: Map<string, number>;
+    withdrawalGainMap: Map<string, number>;
+    totalInvested: number;
+    totalRealizedGain: number;
+}
+
+// Walks snapshots chronologically, netting contributions/withdrawals into cumulative invested,
+// and — for every withdrawal — pro-rates how much of it was gain vs. principal using the fund's
+// value/invested ratio as of the *previous* entry (the state right before this one happened).
+// This mirrors how a fund redemption realizes gain proportionally, not FIFO like a stock/crypto
+// lot, since a fund position isn't bought in discrete units.
+export function buildFundAccounting(baseCapital: number, snapshots: FundSnapshot[]): FundAccounting {
     const sorted = [...snapshots].sort((a, b) => {
         const mDiff = absMonth(a.year, a.month) - absMonth(b.year, b.month);
         if (mDiff !== 0) return mDiff;
@@ -54,13 +66,23 @@ function buildInvestedMap(baseCapital: number, snapshots: FundSnapshot[]): Map<s
         const tDiff = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
         return tDiff !== 0 ? tDiff : a.id.localeCompare(b.id);
     });
-    const map = new Map<string, number>();
+    const investedMap = new Map<string, number>();
+    const withdrawalGainMap = new Map<string, number>();
     let running = baseCapital;
+    let priorValue = baseCapital;
+    let totalRealizedGain = 0;
     for (const s of sorted) {
-        running += s.contribution;
-        map.set(s.id, running);
+        if (s.withdrawal > 0) {
+            const gainRatio = priorValue > 0 ? Math.max(0, (priorValue - running) / priorValue) : 0;
+            const gainPortion = s.withdrawal * gainRatio;
+            withdrawalGainMap.set(s.id, gainPortion);
+            totalRealizedGain += gainPortion;
+        }
+        running += s.contribution - s.withdrawal;
+        investedMap.set(s.id, running);
+        priorValue = s.currentValue;
     }
-    return map;
+    return { investedMap, withdrawalGainMap, totalInvested: running, totalRealizedGain };
 }
 
 // ── New Fund Form ──────────────────────────────────────────────────────
@@ -154,13 +176,15 @@ function AddEntryForm({ fund }: { fund: Fund }) {
     const [month, setMonth] = useState(now.getMonth() + 1);
     const [year, setYear] = useState(now.getFullYear());
     const [capitalAdded, setCapitalAdded] = useState("");
+    const [withdrawal, setWithdrawal] = useState("");
     const [currentValue, setCurrentValue] = useState("");
 
     const enteredCapital = parseFloat(capitalAdded) || 0;
+    const enteredWithdrawal = parseFloat(withdrawal) || 0;
     const enteredValue = parseFloat(currentValue) || 0;
 
     const priorInvested = cumulativeInvestedBefore(fund.baseCapital, fund.snapshots, year, month, day);
-    const totalInvested = priorInvested + enteredCapital;
+    const totalInvested = priorInvested + enteredCapital - enteredWithdrawal;
     const gain = enteredValue > 0 ? enteredValue - totalInvested : null;
     const gainPct = gain != null && totalInvested > 0 ? (gain / totalInvested) * 100 : null;
 
@@ -177,8 +201,10 @@ function AddEntryForm({ fund }: { fund: Fund }) {
                 year,
                 currentValue: Math.round(enteredValue),
                 contribution: Math.round(enteredCapital),
+                withdrawal: Math.round(enteredWithdrawal),
             });
             setCapitalAdded("");
+            setWithdrawal("");
             setCurrentValue("");
         } catch (err) {
             alert(t("funds.alertSaveFailed", { error: err instanceof Error ? err.message : String(err) }));
@@ -213,6 +239,12 @@ function AddEntryForm({ fund }: { fund: Fund }) {
                         style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 12, width: 130 }} />
                 </div>
                 <div>
+                    <label style={{ fontSize: 11, color: "#dc2626", display: "block" }}>{t("funds.withdrawalLabel")}</label>
+                    <input type="number" value={withdrawal} onChange={(e) => setWithdrawal(e.target.value)}
+                        placeholder="0"
+                        style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 12, width: 130 }} />
+                </div>
+                <div>
                     <label style={{ fontSize: 11, color: "#6b7280", display: "block" }}>{t("funds.currentValueLabel")}</label>
                     <input type="number" value={currentValue} onChange={(e) => setCurrentValue(e.target.value)}
                         placeholder="e.g. 1350000"
@@ -227,6 +259,11 @@ function AddEntryForm({ fund }: { fund: Fund }) {
                 <div style={{ marginTop: 8, fontSize: 12, display: "flex", gap: 16, flexWrap: "wrap" }}>
                     <span style={{ color: "#6b7280" }}>{t("funds.totalInvestedInline")} <strong style={{ color: "#1f2937" }}>{<Money amount={totalInvested} />}</strong></span>
                     <span style={{ color: "#6b7280" }}>{t("funds.gainLossInline")} <GainBadge gain={gain} pct={gainPct} /></span>
+                </div>
+            )}
+            {enteredWithdrawal > 0 && (
+                <div style={{ marginTop: 6, fontSize: 11, color: "#6b7280" }}>
+                    {t("funds.withdrawalRealizesGainNote")}
                 </div>
             )}
         </div>
@@ -251,17 +288,19 @@ function FundDetail({ fund, onBack, onDelete }: { fund: Fund; onBack: () => void
         [fund.snapshots]
     );
 
-    const investedBySnapId = useMemo(
-        () => buildInvestedMap(fund.baseCapital, fund.snapshots),
+    const accounting = useMemo(
+        () => buildFundAccounting(fund.baseCapital, fund.snapshots),
         [fund.baseCapital, fund.snapshots]
     );
+    const { investedMap: investedBySnapId, withdrawalGainMap, totalInvested, totalRealizedGain } = accounting;
 
     const totalContribs = snapshots.reduce((s, x) => s + x.contribution, 0);
-    const totalInvested = fund.baseCapital + totalContribs;
+    const totalWithdrawals = snapshots.reduce((s, x) => s + x.withdrawal, 0);
     const latestSnap = snapshots[0];
     const currentValue = latestSnap?.currentValue ?? 0;
     const gain = currentValue > 0 ? currentValue - totalInvested : null;
     const gainPct = gain != null && totalInvested > 0 ? (gain / totalInvested) * 100 : 0;
+    const realizedGainPct = totalWithdrawals > totalRealizedGain ? (totalRealizedGain / (totalWithdrawals - totalRealizedGain)) * 100 : 0;
 
     const handleDeleteSnap = async (id: string) => {
         if (!confirm(t("funds.confirmDeleteEntry"))) return;
@@ -293,9 +332,11 @@ function FundDetail({ fund, onBack, onDelete }: { fund: Fund; onBack: () => void
                     { label: t("funds.startDate"), value: new Date(fund.startDate).toLocaleDateString("es-CO", { day: "2-digit", month: "short", year: "numeric" }), color: "#6b7280" },
                     { label: t("funds.baseCapital"), value: <Money amount={fund.baseCapital} />, color: "#6b7280" },
                     { label: t("funds.totalContributions"), value: <Money amount={totalContribs} />, color: "#f59e0b" },
+                    { label: t("funds.totalWithdrawals"), value: totalWithdrawals > 0 ? <Money amount={totalWithdrawals} /> : "—", color: "#dc2626" },
                     { label: t("funds.totalInvested"), value: <Money amount={totalInvested} />, color: "#7c3aed" },
                     { label: t("funds.currentValue"), value: currentValue > 0 ? <Money amount={currentValue} /> : "—", color: "#059669" },
                     { label: t("funds.gainLoss"), value: gain != null ? <GainBadge gain={gain} pct={gainPct} /> : "—", color: gain != null && gain >= 0 ? "#059669" : "#dc2626" },
+                    { label: t("funds.realizedGain"), value: totalWithdrawals > 0 ? <GainBadge gain={totalRealizedGain} pct={realizedGainPct} /> : "—", color: "#059669" },
                 ] as { label: string; value: React.ReactNode; color: string }[]).map(({ label, value, color }) => (
                     <div key={label} style={{ background: "#fff", borderRadius: 10, padding: 12, boxShadow: "0 1px 4px #0001" }}>
                         <div style={{ fontSize: 10, color: "#6b7280", fontWeight: 600, marginBottom: 4 }}>{label}</div>
@@ -318,6 +359,7 @@ function FundDetail({ fund, onBack, onDelete }: { fund: Fund; onBack: () => void
                                 <tr style={{ background: "#f9fafb" }}>
                                     <th style={{ textAlign: "left", padding: "8px 10px", fontWeight: 600, color: "#374151" }}>{t("funds.date")}</th>
                                     <th style={{ textAlign: "right", padding: "8px 10px", fontWeight: 600, color: "#374151" }}>{t("funds.capitalAdded")}</th>
+                                    <th style={{ textAlign: "right", padding: "8px 10px", fontWeight: 600, color: "#dc2626" }}>{t("funds.withdrawalLabel")}</th>
                                     <th style={{ textAlign: "right", padding: "8px 10px", fontWeight: 600, color: "#374151" }}>{t("funds.currentValue")}</th>
                                     <th style={{ textAlign: "right", padding: "8px 10px", fontWeight: 600, color: "#374151" }}>{t("funds.totalInvested")}</th>
                                     <th style={{ textAlign: "right", padding: "8px 10px", fontWeight: 600, color: "#374151" }}>{t("funds.gainLoss")}</th>
@@ -329,6 +371,7 @@ function FundDetail({ fund, onBack, onDelete }: { fund: Fund; onBack: () => void
                                     const invAtSnap = investedBySnapId.get(snap.id) ?? fund.baseCapital;
                                     const snapGain = snap.currentValue - invAtSnap;
                                     const snapGainPct = invAtSnap > 0 ? (snapGain / invAtSnap) * 100 : 0;
+                                    const withdrawalGain = withdrawalGainMap.get(snap.id) ?? 0;
                                     return (
                                         <tr key={snap.id} style={{ borderTop: "1px solid #f3f4f6" }}>
                                             <td style={{ padding: "8px 10px", fontWeight: 600 }}>
@@ -336,6 +379,14 @@ function FundDetail({ fund, onBack, onDelete }: { fund: Fund; onBack: () => void
                                             </td>
                                             <td style={{ padding: "8px 10px", textAlign: "right", color: snap.contribution > 0 ? "#f59e0b" : "#9ca3af" }}>
                                                 {snap.contribution > 0 ? <>+<Money amount={snap.contribution} /></> : "—"}
+                                            </td>
+                                            <td style={{ padding: "8px 10px", textAlign: "right", color: snap.withdrawal > 0 ? "#dc2626" : "#9ca3af" }}>
+                                                {snap.withdrawal > 0 ? (
+                                                    <>
+                                                        -<Money amount={snap.withdrawal} />
+                                                        <div style={{ fontSize: 10, color: "#9ca3af" }}>{t("funds.ofWhichGainInline")} {<Money amount={withdrawalGain} />}</div>
+                                                    </>
+                                                ) : "—"}
                                             </td>
                                             <td style={{ padding: "8px 10px", textAlign: "right", fontWeight: 600, color: "#059669" }}>
                                                 {<Money amount={snap.currentValue} />}
@@ -390,8 +441,7 @@ function FundList({ funds, onSelect, onDelete }: { funds: Fund[]; onSelect: (id:
             ) : (
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 12 }}>
                     {funds.map((fund) => {
-                        const totalContribs = fund.snapshots.reduce((s, x) => s + x.contribution, 0);
-                        const totalInvested = fund.baseCapital + totalContribs;
+                        const totalInvested = buildFundAccounting(fund.baseCapital, fund.snapshots).totalInvested;
                         const sorted = [...fund.snapshots].sort((a, b) => absMonth(b.year, b.month) - absMonth(a.year, a.month));
                         const currentValue = sorted[0]?.currentValue ?? 0;
                         const gain = currentValue > 0 ? currentValue - totalInvested : null;
