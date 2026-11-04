@@ -10,11 +10,15 @@ import {
     useStockTransactions,
     useAddStockTransaction,
     useDeleteStockTransaction,
+    useStockSales,
+    useAddStockSale,
+    useDeleteStockSale,
     useStockPriceSnapshots,
     useUpsertStockPriceSnapshot,
     useDeleteStockPriceSnapshot,
     type Stock,
     type StockTransaction,
+    type StockSale,
     type StockPriceSnapshot,
 } from "@/hooks/use-finance-data";
 import Money from "@/components/ui/money";
@@ -30,12 +34,77 @@ function latestSnapshot(snapshots: StockPriceSnapshot[]): StockPriceSnapshot | n
     return [...snapshots].sort((a, b) => b.year - a.year || b.month - a.month)[0];
 }
 
-function computeTotalCost(txs: StockTransaction[]) {
-    return txs.reduce((s, t) => s + t.quantity * t.priceUnit + t.commission, 0);
+interface StockLot { id: string; quantity: number; sharesCost: number; commissionCost: number }
+
+/** FIFO-matches sales against buy lots (oldest shares sold first), so a sale realizes gain only
+ * on the specific shares it closes out — not a blend of the whole position. Mirrors the crypto
+ * FIFO pattern (see crypto-tab.tsx), but in a single currency since stocks are COP-native. */
+function fifoStockLots(
+    buys: Array<{ id: string; date: string; quantity: number; sharesCost: number; commissionCost: number }>,
+    sells: Array<{ date: string; quantity: number; proceeds: number }>
+) {
+    type Event =
+        | { type: "buy"; date: number; id: string; quantity: number; sharesCost: number; commissionCost: number }
+        | { type: "sell"; date: number; quantity: number; proceeds: number };
+
+    const events: Event[] = [
+        ...buys.map(b => ({ type: "buy" as const, date: new Date(b.date).getTime(), id: b.id, quantity: b.quantity, sharesCost: b.sharesCost, commissionCost: b.commissionCost })),
+        ...sells.map(s => ({ type: "sell" as const, date: new Date(s.date).getTime(), quantity: s.quantity, proceeds: s.proceeds })),
+    ].sort((a, b) => a.date - b.date);
+
+    const lots: StockLot[] = [];
+    let realizedGain = 0;
+    let totalProceeds = 0;
+
+    for (const ev of events) {
+        if (ev.type === "buy") {
+            if (ev.quantity > 0) lots.push({ id: ev.id, quantity: ev.quantity, sharesCost: ev.sharesCost, commissionCost: ev.commissionCost });
+        } else {
+            let remaining = ev.quantity;
+            let costBasis = 0;
+            while (remaining > 0 && lots.length > 0) {
+                const lot = lots[0];
+                const consumed = Math.min(lot.quantity, remaining);
+                const frac = consumed / lot.quantity;
+                const consumedSharesCost = lot.sharesCost * frac;
+                const consumedCommissionCost = lot.commissionCost * frac;
+                costBasis += consumedSharesCost + consumedCommissionCost;
+                lot.quantity -= consumed;
+                lot.sharesCost -= consumedSharesCost;
+                lot.commissionCost -= consumedCommissionCost;
+                remaining -= consumed;
+                if (lot.quantity <= 0) lots.shift();
+            }
+            totalProceeds += ev.proceeds;
+            realizedGain += ev.proceeds - costBasis;
+        }
+    }
+
+    const heldShares = lots.reduce((s, l) => s + l.quantity, 0);
+    const sharesCostHeld = lots.reduce((s, l) => s + l.sharesCost, 0);
+    const commissionCostHeld = lots.reduce((s, l) => s + l.commissionCost, 0);
+    const remainingByTxId: Record<string, number> = {};
+    lots.forEach(l => { remainingByTxId[l.id] = (remainingByTxId[l.id] ?? 0) + l.quantity; });
+
+    return { heldShares, sharesCostHeld, commissionCostHeld, realizedGain, totalProceeds, remainingByTxId };
 }
 
-function computeTotalShares(txs: StockTransaction[]) {
-    return txs.reduce((s, t) => s + t.quantity, 0);
+/** Single source of truth for "what do I actually still hold" once sales exist — held shares,
+ * cost basis of only the unsold shares, and the cumulative realized gain from closed sales.
+ * Exported so investments-tab.tsx and summary-tab.tsx don't each re-derive this by hand. */
+export function computeStockPosition(txs: StockTransaction[], sales: StockSale[] = []) {
+    const r = fifoStockLots(
+        txs.map(t => ({ id: t.id, date: t.transactionDate, quantity: t.quantity, sharesCost: t.quantity * t.priceUnit, commissionCost: t.commission })),
+        sales.map(s => ({ date: s.saleDate, quantity: s.quantity, proceeds: s.quantity * s.priceUnit - s.commission }))
+    );
+    return {
+        heldShares: r.heldShares,
+        sharesCostHeld: r.sharesCostHeld,
+        costBasisHeld: r.sharesCostHeld + r.commissionCostHeld,
+        realizedGain: r.realizedGain,
+        totalProceeds: r.totalProceeds,
+        remainingByTxId: r.remainingByTxId,
+    };
 }
 
 function GainBadge({ gain, pct }: { gain: number; pct: number }) {
@@ -269,6 +338,100 @@ function AddPurchaseForm({ investmentId, onClose }: { investmentId: string; onCl
     );
 }
 
+// ── Add Sale Form ──────────────────────────────────────────────────────
+
+function AddSaleForm({ investmentId, availableShares, onClose }: { investmentId: string; availableShares: number; onClose: () => void }) {
+    const { t } = useTranslation();
+    const addSale = useAddStockSale();
+    const [form, setForm] = useState({
+        quantity: "",
+        priceUnit: "",
+        commission: "",
+        saleDate: new Date().toISOString().split("T")[0],
+        notes: "",
+    });
+
+    const qty = parseInt(form.quantity) || 0;
+    const price = parseFloat(form.priceUnit) || 0;
+    const commission = parseFloat(form.commission) || 0;
+    const previewProceeds = qty * price - commission;
+    const qtyExceedsAvailable = qty > availableShares;
+
+    const handleSave = async () => {
+        if (!form.quantity || !form.priceUnit || !form.commission) {
+            alert(t("stockTransactions.alertFillRequired"));
+            return;
+        }
+        if (qtyExceedsAvailable) return;
+        try {
+            await addSale.mutateAsync({
+                investmentId,
+                quantity: qty,
+                priceUnit: Math.round(price),
+                commission: Math.round(commission),
+                saleDate: form.saleDate,
+                notes: form.notes,
+            });
+            onClose();
+        } catch {
+            alert(t("stockTransactions.alertAddSaleFailed"));
+        }
+    };
+
+    return (
+        <div style={{ background: "#fef2f2", borderRadius: 8, padding: 12, marginBottom: 12, border: "1px solid #fecaca" }}>
+            <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 8, color: "#374151" }}>
+                {t("stockTransactions.addSaleTitle")} <span style={{ color: "#9ca3af", fontWeight: 400 }}>{t("stockTransactions.availableSharesInline", { n: availableShares.toLocaleString() })}</span>
+            </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "end" }}>
+                <div>
+                    <label style={{ fontSize: 11, color: "#6b7280", display: "block" }}>{t("stockTransactions.quantityLabel")}</label>
+                    <input type="number" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })}
+                        placeholder="10" style={{ display: "block", padding: "5px 8px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 12, width: 80 }} />
+                </div>
+                <div>
+                    <label style={{ fontSize: 11, color: "#6b7280", display: "block" }}>{t("stockTransactions.sellPriceShareLabel")}</label>
+                    <input type="number" value={form.priceUnit} onChange={(e) => setForm({ ...form, priceUnit: e.target.value })}
+                        placeholder="2500" style={{ display: "block", padding: "5px 8px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 12, width: 100 }} />
+                </div>
+                <div>
+                    <label style={{ fontSize: 11, color: "#6b7280", display: "block" }}>{t("stockTransactions.commissionLabel")}</label>
+                    <input type="number" value={form.commission} onChange={(e) => setForm({ ...form, commission: e.target.value })}
+                        placeholder="0" style={{ display: "block", padding: "5px 8px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 12, width: 90 }} />
+                </div>
+                <div>
+                    <label style={{ fontSize: 11, color: "#6b7280", display: "block" }}>{t("stockTransactions.dateLabel")}</label>
+                    <input type="date" value={form.saleDate} onChange={(e) => setForm({ ...form, saleDate: e.target.value })}
+                        style={{ display: "block", padding: "5px 8px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 12 }} />
+                </div>
+                <div style={{ flex: 1, minWidth: 120 }}>
+                    <label style={{ fontSize: 11, color: "#6b7280", display: "block" }}>{t("stockTransactions.notesLabel")}</label>
+                    <input type="text" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })}
+                        placeholder={t("stockTransactions.notesPlaceholderOptional")} style={{ display: "block", padding: "5px 8px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 12, width: "100%" }} />
+                </div>
+                <button onClick={handleSave} disabled={addSale.isPending || qtyExceedsAvailable}
+                    style={{ padding: "5px 14px", borderRadius: 8, border: "none", cursor: (addSale.isPending || qtyExceedsAvailable) ? "not-allowed" : "pointer", background: "#dc2626", color: "#fff", fontWeight: 600, fontSize: 12, opacity: (addSale.isPending || qtyExceedsAvailable) ? 0.6 : 1 }}>
+                    {addSale.isPending ? t("stockTransactions.saving") : t("stockTransactions.save")}
+                </button>
+                <button onClick={onClose}
+                    style={{ padding: "5px 10px", borderRadius: 8, border: "1px solid #d1d5db", cursor: "pointer", background: "#fff", color: "#374151", fontWeight: 600, fontSize: 12 }}>
+                    {t("stockTransactions.cancel")}
+                </button>
+            </div>
+            {qtyExceedsAvailable && (
+                <div style={{ marginTop: 6, fontSize: 11, color: "#dc2626" }}>
+                    {t("stockTransactions.onlySharesAvailable", { n: availableShares.toLocaleString() })}
+                </div>
+            )}
+            {!qtyExceedsAvailable && previewProceeds > 0 && (
+                <div style={{ marginTop: 6, fontSize: 11, color: "#6b7280" }}>
+                    {t("stockTransactions.proceedsInline")} <strong style={{ color: "#1f2937" }}>{<Money amount={previewProceeds} />}</strong>
+                </div>
+            )}
+        </div>
+    );
+}
+
 // ── Add Price Per Share Form ───────────────────────────────────────────
 
 function AddPricePerShareForm({ investmentId, totalShares, totalCost }: { investmentId: string; totalShares: number; totalCost: number }) {
@@ -342,11 +505,14 @@ function AddPricePerShareForm({ investmentId, totalShares, totalCost }: { invest
 function StockDetail({ investment, onBack }: { investment: Stock; onBack: () => void }) {
     const { t } = useTranslation();
     const { data: transactions = [] } = useStockTransactions(investment.id);
+    const { data: sales = [] } = useStockSales(investment.id);
     const { data: priceSnaps = [] } = useStockPriceSnapshots(investment.id);
     const deleteTransaction = useDeleteStockTransaction();
+    const deleteSale = useDeleteStockSale();
     const deletePriceSnap = useDeleteStockPriceSnapshot();
     const updateStock = useUpdateStock();
     const [showAddPurchase, setShowAddPurchase] = useState(false);
+    const [showAddSale, setShowAddSale] = useState(false);
     const [editingCommission, setEditingCommission] = useState(false);
     const [commissionInput, setCommissionInput] = useState(String(investment.sellCommission));
 
@@ -355,14 +521,18 @@ function StockDetail({ investment, onBack }: { investment: Stock; onBack: () => 
         [transactions]
     );
 
+    const sortedSales = useMemo(
+        () => [...sales].sort((a, b) => new Date(b.saleDate).getTime() - new Date(a.saleDate).getTime()),
+        [sales]
+    );
+
     const sortedSnaps = useMemo(
         () => [...priceSnaps].sort((a, b) => b.year - a.year || b.month - a.month),
         [priceSnaps]
     );
 
-    const totalShares = computeTotalShares(transactions);
-    const totalCost = computeTotalCost(transactions);
-    const totalSharesCost = transactions.reduce((s, t) => s + t.quantity * t.priceUnit, 0);
+    const position = useMemo(() => computeStockPosition(transactions, sales), [transactions, sales]);
+    const { heldShares: totalShares, sharesCostHeld: totalSharesCost, costBasisHeld: totalCost, realizedGain, totalProceeds, remainingByTxId } = position;
     const totalCommissions = totalCost - totalSharesCost;
     const avgCostPerShare = totalShares > 0 ? totalCost / totalShares : 0;
 
@@ -376,6 +546,7 @@ function StockDetail({ investment, onBack }: { investment: Stock; onBack: () => 
     const sellComm = investment.sellCommission;
     const netIfSold = totalGain !== null ? totalGain - sellComm : null;
     const netIfSoldPct = netIfSold !== null && totalCost > 0 ? (netIfSold / totalCost) * 100 : null;
+    const realizedGainPct = totalProceeds > 0 ? (realizedGain / (totalProceeds - realizedGain)) * 100 : 0;
 
     const handleSaveCommission = async () => {
         const val = parseInt(commissionInput);
@@ -387,6 +558,11 @@ function StockDetail({ investment, onBack }: { investment: Stock; onBack: () => 
     const handleDeleteTx = async (id: string) => {
         if (!confirm(t("stockTransactions.confirmDeletePurchase"))) return;
         await deleteTransaction.mutateAsync(id);
+    };
+
+    const handleDeleteSale = async (id: string) => {
+        if (!confirm(t("stockTransactions.confirmDeleteSale"))) return;
+        await deleteSale.mutateAsync(id);
     };
 
     const handleDeleteSnap = async (id: string) => {
@@ -486,6 +662,21 @@ function StockDetail({ investment, onBack }: { investment: Stock; onBack: () => 
                         <div style={{ fontSize: 13, color: "#9ca3af", marginTop: 4 }}>—</div>
                     )}
                 </div>
+
+                {/* Realized gain card (from closed sales) */}
+                <div style={{ background: "#fff", borderRadius: 10, padding: 12, boxShadow: "0 1px 4px #0001", borderTop: "3px solid #059669" }}>
+                    <div style={{ fontSize: 10, color: "#6b7280", fontWeight: 600, marginBottom: 4 }}>{t("stockTransactions.realizedGainLabel")}</div>
+                    {sales.length > 0 ? (
+                        <div style={{ fontSize: 16, fontWeight: 700, color: realizedGain >= 0 ? "#059669" : "#dc2626" }}>
+                            {realizedGain >= 0 ? "+" : ""}{<Money amount={realizedGain} />}
+                            <span style={{ fontSize: 11, fontWeight: 400, color: "#9ca3af", marginLeft: 4 }}>
+                                ({realizedGain >= 0 ? "+" : ""}{realizedGainPct.toFixed(2)}%)
+                            </span>
+                        </div>
+                    ) : (
+                        <div style={{ fontSize: 13, color: "#9ca3af", marginTop: 4 }}>—</div>
+                    )}
+                </div>
             </div>
 
             {/* Purchase History */}
@@ -534,9 +725,12 @@ function StockDetail({ investment, onBack }: { investment: Stock; onBack: () => 
                             </thead>
                             <tbody>
                                 {sortedTxs.map((tx, i) => {
-                                    const sharesCost = tx.quantity * tx.priceUnit;
-                                    const costBasis = sharesCost + tx.commission;
-                                    const batchCurrentValue = latestPrice > 0 ? latestPrice * tx.quantity : null;
+                                    const remainingQty = remainingByTxId[tx.id] ?? tx.quantity;
+                                    const soldQty = tx.quantity - remainingQty;
+                                    const sharesCost = remainingQty * tx.priceUnit;
+                                    const commissionRemaining = tx.quantity > 0 ? tx.commission * (remainingQty / tx.quantity) : 0;
+                                    const costBasis = sharesCost + commissionRemaining;
+                                    const batchCurrentValue = latestPrice > 0 ? latestPrice * remainingQty : null;
                                     const sharesGainRow = batchCurrentValue != null ? batchCurrentValue - sharesCost : null;
                                     const sharesGainPctRow = sharesGainRow != null && sharesCost > 0 ? (sharesGainRow / sharesCost) * 100 : null;
                                     const gainTotal = batchCurrentValue != null ? batchCurrentValue - costBasis : null;
@@ -549,9 +743,10 @@ function StockDetail({ investment, onBack }: { investment: Stock; onBack: () => 
                                             <td style={{ padding: "8px 10px" }}>
                                                 <div>{new Date(tx.transactionDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" })}</div>
                                                 {tx.notes && <div style={{ fontSize: 10, color: "#9ca3af", marginTop: 2 }}>{tx.notes}</div>}
+                                                {soldQty > 0 && <div style={{ fontSize: 10, color: "#dc2626", marginTop: 2 }}>{t("stockTransactions.soldOfLotInline", { sold: soldQty.toLocaleString() })}</div>}
                                             </td>
                                             <td style={{ padding: "8px 10px", textAlign: "right", fontWeight: 600, color: "#3b82f6" }}>
-                                                {tx.quantity.toLocaleString()}
+                                                {remainingQty.toLocaleString()}{soldQty > 0 && <span style={{ color: "#9ca3af", fontWeight: 400 }}> / {tx.quantity.toLocaleString()}</span>}
                                             </td>
                                             <td style={{ padding: "8px 10px", textAlign: "right" }}>
                                                 {<Money amount={tx.priceUnit} />}
@@ -580,6 +775,73 @@ function StockDetail({ investment, onBack }: { investment: Stock; onBack: () => 
                                             </td>
                                             <td style={{ padding: "8px 10px" }}>
                                                 <button onClick={() => handleDeleteTx(tx.id)} disabled={deleteTransaction.isPending}
+                                                    style={{ padding: "3px 8px", borderRadius: 4, border: "1px solid #fee2e2", background: "#fef2f2", color: "#dc2626", cursor: "pointer", fontSize: 11, fontWeight: 600 }}>
+                                                    {t("stockTransactions.deleteAction")}
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
+            </div>
+
+            {/* Sales History */}
+            <div style={{ background: "#fff", borderRadius: 10, padding: 14, boxShadow: "0 1px 4px #0001", marginBottom: 16 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                    <span style={{ fontWeight: 700, fontSize: 13, color: "#1f2937" }}>{t("stockTransactions.salesHistoryTitle")}</span>
+                    <button onClick={() => setShowAddSale(!showAddSale)} disabled={totalShares === 0}
+                        style={{ padding: "5px 12px", borderRadius: 8, border: "none", cursor: totalShares === 0 ? "not-allowed" : "pointer", background: "#dc2626", color: "#fff", fontWeight: 600, fontSize: 12, opacity: totalShares === 0 ? 0.5 : 1 }}>
+                        {t("stockTransactions.addSaleButton")}
+                    </button>
+                </div>
+
+                {showAddSale && (
+                    <AddSaleForm investmentId={investment.id} availableShares={totalShares} onClose={() => setShowAddSale(false)} />
+                )}
+
+                {sortedSales.length === 0 ? (
+                    <div style={{ textAlign: "center", color: "#9ca3af", padding: 24, fontSize: 13 }}>
+                        {t("stockTransactions.noSalesYet")}
+                    </div>
+                ) : (
+                    <div style={{ overflowX: "auto" }}>
+                        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                            <thead>
+                                <tr style={{ background: "#f9fafb" }}>
+                                    <th style={{ textAlign: "left", padding: "8px 10px", fontWeight: 600, color: "#374151" }}>{t("stockTransactions.colDate")}</th>
+                                    <th style={{ textAlign: "right", padding: "8px 10px", fontWeight: 600, color: "#374151" }}>{t("stockTransactions.colShares")}</th>
+                                    <th style={{ textAlign: "right", padding: "8px 10px", fontWeight: 600, color: "#374151" }}>{t("stockTransactions.colSellPrice")}</th>
+                                    <th style={{ textAlign: "right", padding: "8px 10px", fontWeight: 600, color: "#374151" }}>{t("stockTransactions.colCommission")}</th>
+                                    <th style={{ textAlign: "right", padding: "8px 10px", fontWeight: 600, color: "#059669" }}>{t("stockTransactions.colProceeds")}</th>
+                                    <th style={{ padding: "8px 10px" }}></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {sortedSales.map(sale => {
+                                    const proceeds = sale.quantity * sale.priceUnit - sale.commission;
+                                    return (
+                                        <tr key={sale.id} style={{ borderTop: "1px solid #f3f4f6" }}>
+                                            <td style={{ padding: "8px 10px" }}>
+                                                <div>{new Date(sale.saleDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" })}</div>
+                                                {sale.notes && <div style={{ fontSize: 10, color: "#9ca3af", marginTop: 2 }}>{sale.notes}</div>}
+                                            </td>
+                                            <td style={{ padding: "8px 10px", textAlign: "right", fontWeight: 600, color: "#3b82f6" }}>
+                                                {sale.quantity.toLocaleString()}
+                                            </td>
+                                            <td style={{ padding: "8px 10px", textAlign: "right" }}>
+                                                {<Money amount={sale.priceUnit} />}
+                                            </td>
+                                            <td style={{ padding: "8px 10px", textAlign: "right", color: "#f59e0b" }}>
+                                                {<Money amount={sale.commission} />}
+                                            </td>
+                                            <td style={{ padding: "8px 10px", textAlign: "right", fontWeight: 600, color: "#059669" }}>
+                                                {<Money amount={proceeds} />}
+                                            </td>
+                                            <td style={{ padding: "8px 10px" }}>
+                                                <button onClick={() => handleDeleteSale(sale.id)} disabled={deleteSale.isPending}
                                                     style={{ padding: "3px 8px", borderRadius: 4, border: "1px solid #fee2e2", background: "#fef2f2", color: "#dc2626", cursor: "pointer", fontSize: 11, fontWeight: 600 }}>
                                                     {t("stockTransactions.deleteAction")}
                                                 </button>
@@ -657,11 +919,13 @@ function StockDetail({ investment, onBack }: { investment: Stock; onBack: () => 
 function StockList({
     investments,
     allTransactions,
+    allSales,
     allPriceSnapshots,
     onSelect,
 }: {
     investments: Stock[];
     allTransactions: StockTransaction[];
+    allSales: StockSale[];
     allPriceSnapshots: StockPriceSnapshot[];
     onSelect: (id: string) => void;
 }) {
@@ -696,10 +960,10 @@ function StockList({
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 12 }}>
                     {investments.map((inv) => {
                         const txs = allTransactions.filter((t) => t.investmentId === inv.id);
+                        const sales = allSales.filter((s) => s.investmentId === inv.id);
                         const snaps = allPriceSnapshots.filter((s) => s.investmentId === inv.id);
                         const latest = latestSnapshot(snaps);
-                        const totalCost = computeTotalCost(txs);
-                        const totalShares = computeTotalShares(txs);
+                        const { heldShares: totalShares, costBasisHeld: totalCost } = computeStockPosition(txs, sales);
                         const latestPrice = latest?.pricePerShare ?? 0;
                         const latestValue = latestPrice > 0 ? latestPrice * totalShares : 0;
                         const gain = latestValue > 0 ? latestValue - totalCost : null;
@@ -769,6 +1033,7 @@ function StockList({
 export default function StockTransactionsTab() {
     const { data: stocks = [] } = useStocks();
     const { data: allTransactions = [] } = useStockTransactions();
+    const { data: allSales = [] } = useStockSales();
     const { data: allPriceSnapshots = [] } = useStockPriceSnapshots();
     const [selectedId, setSelectedId] = useState<string | null>(null);
 
@@ -785,6 +1050,7 @@ export default function StockTransactionsTab() {
         <StockList
             investments={stocks}
             allTransactions={allTransactions}
+            allSales={allSales}
             allPriceSnapshots={allPriceSnapshots}
             onSelect={(id) => setSelectedId(id)}
         />

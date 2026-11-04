@@ -24,6 +24,7 @@ model User {
   incomeHistory       IncomeHistory[]
   budgetHistory       BudgetHistory[]
   stockTransactions   StockTransaction[]
+  stockSales          StockSale[]
   stockPriceSnapshots StockPriceSnapshot[]
   funds               Fund[]
   fundSnapshots       FundSnapshot[]
@@ -31,6 +32,7 @@ model User {
   fixedDeposits          FixedDeposit[]
   fixedDepositSnapshots  FixedDepositSnapshot[]
   usdwPurchases          UsdwPurchase[]
+  usdwSales              UsdwSale[]
   btcPurchases           BtcPurchase[]
   solPurchases           SolPurchase[]
   btcSales               BtcSale[]
@@ -116,6 +118,7 @@ model Stock {
   userId          String
   user            User                 @relation(fields: [userId], references: [id])
   transactions    StockTransaction[]
+  sales           StockSale[]
   priceSnapshots  StockPriceSnapshot[]
 }
 
@@ -181,6 +184,21 @@ model StockTransaction {
 
   stock           Stock  @relation(fields: [investmentId], references: [id], onDelete: Cascade)
   user            User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model StockSale {
+  id           String   @id @default(uuid())
+  investmentId String
+  quantity     Int      // Cantidad de acciones vendidas
+  priceUnit    Int      // Precio por acción al vender (en centavos)
+  commission   Int      // Comisión de la venta (en centavos)
+  saleDate     DateTime
+  notes        String   @default("")
+  createdAt    DateTime @default(now())
+  userId       String
+
+  stock        Stock    @relation(fields: [investmentId], references: [id], onDelete: Cascade)
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model StockPriceSnapshot {
@@ -278,6 +296,18 @@ model UsdwPurchase {
   copAmount     Float    // total COP paid for this purchase (includes commission)
   commissionCop Float    @default(0)
   usdwAmount    Float    // USDW actually received
+  notes         String   @default("")
+  createdAt     DateTime @default(now())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model UsdwSale {
+  id            String   @id @default(uuid())
+  date          DateTime
+  usdwAmount    Float    // USDW sold/spent/converted back
+  commissionCop Float    @default(0)
+  copReceived   Float    // net COP received (or COP-equivalent value if just spent directly)
   notes         String   @default("")
   createdAt     DateTime @default(now())
   userId        String

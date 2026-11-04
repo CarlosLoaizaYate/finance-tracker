@@ -163,6 +163,18 @@ export interface StockTransaction {
   userId: string;
 }
 
+export interface StockSale {
+  id: string;
+  investmentId: string;
+  quantity: number;
+  priceUnit: number;
+  commission: number;
+  saleDate: string;
+  notes: string;
+  createdAt: string;
+  userId: string;
+}
+
 export interface StockPriceSnapshot {
   id: string;
   investmentId: string;
@@ -500,6 +512,47 @@ export function useDeleteStockTransaction() {
   });
 }
 
+export function useStockSales(investmentId?: string) {
+  return useQuery<StockSale[]>({
+    queryKey: ["stock-sales", investmentId],
+    queryFn: () => {
+      const url = investmentId
+        ? `/api/stock-sales?investmentId=${investmentId}`
+        : "/api/stock-sales";
+      return get(url);
+    },
+  });
+}
+
+export function useAddStockSale() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: {
+      investmentId: string;
+      quantity: number;
+      priceUnit: number;
+      commission: number;
+      saleDate: string;
+      notes?: string;
+    }) => post("/api/stock-sales", data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["stock-sales"] });
+      qc.invalidateQueries({ queryKey: ["investment-metrics"] });
+    },
+  });
+}
+
+export function useDeleteStockSale() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => del(`/api/stock-sales/${id}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["stock-sales"] });
+      qc.invalidateQueries({ queryKey: ["investment-metrics"] });
+    },
+  });
+}
+
 export function useStockPriceSnapshots(investmentId?: string) {
   return useQuery<StockPriceSnapshot[]>({
     queryKey: ["stock-price-snapshots", investmentId ?? "all"],
@@ -751,6 +804,16 @@ export interface UsdwPurchase {
   createdAt: string;
 }
 
+export interface UsdwSale {
+  id: string;
+  date: string;
+  usdwAmount: number;
+  commissionCop: number;
+  copReceived: number;
+  notes: string;
+  createdAt: string;
+}
+
 export interface BtcPurchase {
   id: string;
   date: string;
@@ -828,6 +891,30 @@ export function useDeleteUsdwPurchase() {
   return useMutation({
     mutationFn: (id: string) => del(`/api/usdw-purchases/${id}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["usdw-purchases"] }),
+  });
+}
+
+export function useUsdwSales() {
+  return useQuery<UsdwSale[]>({
+    queryKey: ["usdw-sales"],
+    queryFn: () => get("/api/usdw-sales"),
+  });
+}
+
+export function useAddUsdwSale() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { date: string; usdwAmount: number; commissionCop: number; copReceived: number; notes?: string }) =>
+      post("/api/usdw-sales", data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["usdw-sales"] }),
+  });
+}
+
+export function useDeleteUsdwSale() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => del(`/api/usdw-sales/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["usdw-sales"] }),
   });
 }
 

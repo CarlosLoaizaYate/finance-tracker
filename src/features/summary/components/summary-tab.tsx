@@ -13,6 +13,7 @@ import {
   useCategories,
   useStocks,
   useStockTransactions,
+  useStockSales,
   useStockPriceSnapshots,
   useFunds,
   useFixedDepositGroups,
@@ -21,6 +22,7 @@ import {
   useSolPurchases,
   useBtcSales,
   useSolSales,
+  useUsdwSales,
   useCryptoSnapshots,
   useCryptoSettings,
   useCardInstallments,
@@ -34,6 +36,7 @@ import Kpi from "@/components/ui/kpi";
 import Badge from "@/components/ui/badge";
 import Money from "@/components/ui/money";
 import { computeSummary as computeCryptoSummary, effectiveSellCommission } from "@/features/investments/components/crypto-tab";
+import { computeStockPosition } from "@/features/investments/components/stock-transactions-tab";
 import { useTranslation } from "@/hooks/use-translation";
 
 export default function SummaryTab() {
@@ -248,6 +251,7 @@ function InvestmentsSummarySection() {
   const { t } = useTranslation();
   const { data: dbStocks = [] } = useStocks();
   const { data: allTxs = [] } = useStockTransactions();
+  const { data: allStockSales = [] } = useStockSales();
   const { data: allPriceSnaps = [] } = useStockPriceSnapshots();
   const { data: funds = [] } = useFunds();
   const { data: depositGroups = [] } = useFixedDepositGroups();
@@ -256,6 +260,7 @@ function InvestmentsSummarySection() {
   const { data: solPurchases = [] } = useSolPurchases();
   const { data: btcSales = [] } = useBtcSales();
   const { data: solSales = [] } = useSolSales();
+  const { data: usdwSales = [] } = useUsdwSales();
   const { data: cryptoSnapshots = [] } = useCryptoSnapshots();
   const { data: cryptoSettings } = useCryptoSettings();
 
@@ -264,6 +269,12 @@ function InvestmentsSummarySection() {
     allTxs.forEach(tx => { (map[tx.investmentId] ??= []).push(tx); });
     return map;
   }, [allTxs]);
+
+  const stockSalesByInv = useMemo(() => {
+    const map: Record<string, typeof allStockSales> = {};
+    allStockSales.forEach(sale => { (map[sale.investmentId] ??= []).push(sale); });
+    return map;
+  }, [allStockSales]);
 
   const priceSnapByInv = useMemo(() => {
     const map: Record<string, typeof allPriceSnaps> = {};
@@ -275,16 +286,13 @@ function InvestmentsSummarySection() {
   const stocksInvested = useMemo(() =>
     dbStocks
       .filter(inv => txByInv[inv.id]?.length)
-      .reduce((s, inv) => {
-        const txs = txByInv[inv.id];
-        return s + txs.reduce((t, tx) => t + tx.quantity * tx.priceUnit + tx.commission, 0);
-      }, 0),
-    [dbStocks, txByInv]);
+      .reduce((s, inv) => s + computeStockPosition(txByInv[inv.id], stockSalesByInv[inv.id] ?? []).costBasisHeld, 0),
+    [dbStocks, txByInv, stockSalesByInv]);
 
   // Crypto (USDW + BTC + SOL)
   const cryptoSummary = useMemo(
-    () => computeCryptoSummary(usdwPurchases, btcPurchases, cryptoSnapshots, solPurchases, btcSales, solSales),
-    [usdwPurchases, btcPurchases, cryptoSnapshots, solPurchases, btcSales, solSales]
+    () => computeCryptoSummary(usdwPurchases, btcPurchases, cryptoSnapshots, solPurchases, btcSales, solSales, usdwSales),
+    [usdwPurchases, btcPurchases, cryptoSnapshots, solPurchases, btcSales, solSales, usdwSales]
   );
   const cryptoInvested = useMemo(
     () => usdwPurchases.reduce((s, p) => s + p.copAmount, 0),
@@ -301,18 +309,17 @@ function InvestmentsSummarySection() {
     let total = 0;
     let allHavePrice = true;
     for (const inv of items) {
-      const txs = txByInv[inv.id];
-      const totalShares = txs.reduce((s, t) => s + t.quantity, 0);
+      const { heldShares, costBasisHeld } = computeStockPosition(txByInv[inv.id], stockSalesByInv[inv.id] ?? []);
       const latest = (priceSnapByInv[inv.id] ?? []).sort((a, b) => b.year - a.year || b.month - a.month)[0];
       if (latest) {
-        total += latest.pricePerShare * totalShares;
+        total += latest.pricePerShare * heldShares;
       } else {
         allHavePrice = false;
-        total += txs.reduce((s, t) => s + t.quantity * t.priceUnit + t.commission, 0);
+        total += costBasisHeld;
       }
     }
     return allHavePrice ? total : null;
-  }, [dbStocks, txByInv, priceSnapByInv]);
+  }, [dbStocks, txByInv, stockSalesByInv, priceSnapByInv]);
 
   // Funds
   const fundsInvested = useMemo(() =>
@@ -524,6 +531,7 @@ function InvestmentChartsSection() {
   const { t, language } = useTranslation();
   const { data: dbStocks = [] } = useStocks();
   const { data: allTxs = [] } = useStockTransactions();
+  const { data: allStockSales = [] } = useStockSales();
   const { data: allPriceSnaps = [] } = useStockPriceSnapshots();
   const { data: funds = [] } = useFunds();
   const { data: depositGroups = [] } = useFixedDepositGroups();
@@ -532,6 +540,7 @@ function InvestmentChartsSection() {
   const { data: solPurchases = [] } = useSolPurchases();
   const { data: btcSales = [] } = useBtcSales();
   const { data: solSales = [] } = useSolSales();
+  const { data: usdwSales = [] } = useUsdwSales();
   const { data: cryptoSnapshots = [] } = useCryptoSnapshots();
 
   const txByInv = useMemo(() => {
@@ -539,6 +548,12 @@ function InvestmentChartsSection() {
     allTxs.forEach(tx => { (map[tx.investmentId] ??= []).push(tx); });
     return map;
   }, [allTxs]);
+
+  const stockSalesByInv = useMemo(() => {
+    const map: Record<string, typeof allStockSales> = {};
+    allStockSales.forEach(sale => { (map[sale.investmentId] ??= []).push(sale); });
+    return map;
+  }, [allStockSales]);
 
   const priceSnapByInv = useMemo(() => {
     const map: Record<string, typeof allPriceSnaps> = {};
@@ -553,9 +568,7 @@ function InvestmentChartsSection() {
     if (hasStocks) {
       let invested = 0, current = 0, allHavePrice = true;
       dbStocks.filter(inv => txByInv[inv.id]?.length).forEach(inv => {
-        const txs = txByInv[inv.id];
-        const cost = txs.reduce((s, t) => s + t.quantity * t.priceUnit + t.commission, 0);
-        const shares = txs.reduce((s, t) => s + t.quantity, 0);
+        const { heldShares: shares, costBasisHeld: cost } = computeStockPosition(txByInv[inv.id], stockSalesByInv[inv.id] ?? []);
         const latest = (priceSnapByInv[inv.id] ?? []).sort((a, b) => b.year - a.year || b.month - a.month)[0];
         invested += cost;
         if (latest) current += latest.pricePerShare * shares;
@@ -591,13 +604,13 @@ function InvestmentChartsSection() {
 
     if (usdwPurchases.length > 0 || btcPurchases.length > 0 || solPurchases.length > 0) {
       const invested = usdwPurchases.reduce((s, p) => s + p.copAmount, 0);
-      const summary = computeCryptoSummary(usdwPurchases, btcPurchases, cryptoSnapshots, solPurchases, btcSales, solSales);
+      const summary = computeCryptoSummary(usdwPurchases, btcPurchases, cryptoSnapshots, solPurchases, btcSales, solSales, usdwSales);
       result.push({ name: t("summary.crypto"), color: "#f59e0b", invested, current: summary.usdValueCop + summary.btcValueCop + summary.solValueCop });
     }
 
     return result;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dbStocks, txByInv, priceSnapByInv, funds, depositGroups, usdwPurchases, btcPurchases, solPurchases, btcSales, solSales, cryptoSnapshots, language]);
+  }, [dbStocks, txByInv, stockSalesByInv, priceSnapByInv, funds, depositGroups, usdwPurchases, btcPurchases, solPurchases, btcSales, solSales, usdwSales, cryptoSnapshots, language]);
 
   if (rows.length === 0) return null;
 

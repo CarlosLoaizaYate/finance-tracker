@@ -13,20 +13,24 @@ import {
   useFixedDepositGroups,
   useFunds,
   useStockTransactions,
+  useStockSales,
   useStockPriceSnapshots,
   useUsdwPurchases,
   useBtcPurchases,
   useSolPurchases,
   useBtcSales,
   useSolSales,
+  useUsdwSales,
   useCryptoSnapshots,
   useCryptoSettings,
   type FixedDepositGroup,
   type Fund as FundType,
   type StockTransaction,
+  type StockSale,
   type StockPriceSnapshot,
 } from "@/hooks/use-finance-data";
 import { computeSummary as computeCryptoSummary, computeCryptoValueAtMonth, effectiveSellCommission } from "./crypto-tab";
+import { computeStockPosition } from "./stock-transactions-tab";
 import { useDashboardStore } from "@/stores/dashboard-store";
 import { MONTHS } from "@/lib/constants";
 import { fmt, gainPc } from "@/lib/formatters";
@@ -257,6 +261,7 @@ function SummaryContent({
   // Category summary data
   const { data: depositGroups = [] } = useFixedDepositGroups();
   const { data: allTxs = [] } = useStockTransactions();
+  const { data: allStockSales = [] } = useStockSales();
   const { data: allPriceSnaps = [] } = useStockPriceSnapshots();
   const { data: funds = [] } = useFunds();
   const { data: usdwPurchases = [] } = useUsdwPurchases();
@@ -264,6 +269,7 @@ function SummaryContent({
   const { data: solPurchases = [] } = useSolPurchases();
   const { data: btcSales = [] } = useBtcSales();
   const { data: solSales = [] } = useSolSales();
+  const { data: usdwSales = [] } = useUsdwSales();
   const { data: cryptoSnapshots = [] } = useCryptoSnapshots();
   const { data: cryptoSettings } = useCryptoSettings();
 
@@ -296,6 +302,12 @@ function SummaryContent({
     return map;
   }, [allTxs]);
 
+  const stockSalesByInv = useMemo(() => {
+    const map: Record<string, StockSale[]> = {};
+    allStockSales.forEach(sale => { (map[sale.investmentId] ??= []).push(sale); });
+    return map;
+  }, [allStockSales]);
+
   const priceSnapByInv = useMemo(() => {
     const map: Record<string, StockPriceSnapshot[]> = {};
     allPriceSnaps.forEach(s => { (map[s.investmentId] ??= []).push(s); });
@@ -307,13 +319,12 @@ function SummaryContent({
       .filter(inv => txByInv[inv.id]?.length)
       .map(inv => {
         const txs = txByInv[inv.id];
-        const totalCost = txs.reduce((s, t) => s + t.quantity * t.priceUnit + t.commission, 0);
-        const totalShares = txs.reduce((s, t) => s + t.quantity, 0);
+        const { heldShares: totalShares, costBasisHeld: totalCost } = computeStockPosition(txs, stockSalesByInv[inv.id] ?? []);
         const latest = (priceSnapByInv[inv.id] ?? []).sort((a, b) => b.year - a.year || b.month - a.month)[0];
         const currentValue = latest ? latest.pricePerShare * totalShares : null;
         return { id: inv.id, name: inv.name, color: inv.color, label: inv.type?.name, invested: totalCost, currentValue, sellCommission: inv.sellCommission };
       });
-  }, [dbStocks, txByInv, priceSnapByInv]);
+  }, [dbStocks, txByInv, stockSalesByInv, priceSnapByInv]);
 
   const fundItems = useMemo((): CategoryItem[] =>
     funds.map(f => {
@@ -325,8 +336,8 @@ function SummaryContent({
     }), [funds]);
 
   const cryptoSummary = useMemo(
-    () => computeCryptoSummary(usdwPurchases, btcPurchases, cryptoSnapshots, solPurchases, btcSales, solSales),
-    [usdwPurchases, btcPurchases, cryptoSnapshots, solPurchases, btcSales, solSales]
+    () => computeCryptoSummary(usdwPurchases, btcPurchases, cryptoSnapshots, solPurchases, btcSales, solSales, usdwSales),
+    [usdwPurchases, btcPurchases, cryptoSnapshots, solPurchases, btcSales, solSales, usdwSales]
   );
 
   const cryptoItems = useMemo((): CategoryItem[] => {
@@ -543,7 +554,7 @@ function SummaryContent({
       // Crypto (USDW + BTC + SOL): only from the month of the first purchase onward
       if (usdwPurchases.length > 0 || btcPurchases.length > 0 || solPurchases.length > 0) {
         const { invested: cryptoInvested, value: cryptoVal, usdwValue, btcValue, solValue } =
-          computeCryptoValueAtMonth(usdwPurchases, btcPurchases, cryptoSnapshots, i, solPurchases, btcSales, solSales);
+          computeCryptoValueAtMonth(usdwPurchases, btcPurchases, cryptoSnapshots, i, solPurchases, btcSales, solSales, usdwSales);
         if (cryptoInvested > 0 || cryptoVal > 0) {
           ti += cryptoInvested;
           tv += cryptoVal;
@@ -563,7 +574,7 @@ function SummaryContent({
       data.push(row);
     }
     return data;
-  }, [invs, chartFrom, chartTo, txByInv, priceSnapByInv, funds, depositGroups, usdwPurchases, btcPurchases, solPurchases, btcSales, solSales, cryptoSnapshots]);
+  }, [invs, chartFrom, chartTo, txByInv, priceSnapByInv, funds, depositGroups, usdwPurchases, btcPurchases, solPurchases, btcSales, solSales, usdwSales, cryptoSnapshots]);
 
   return (
     <>

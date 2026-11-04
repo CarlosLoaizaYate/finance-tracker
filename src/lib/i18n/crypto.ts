@@ -63,6 +63,11 @@ export const cryptoEn = {
   colUsdwBalance: "USDW balance",
 
   usdwPurchasesTitle: "USDW purchases (COP → USDW)",
+  usdwSalesTitle: "USDW sales/spends (USDW → COP)",
+  usdwAmountToSellLabel: "USDW to sell/spend",
+  copReceivedLabel: "COP received",
+  colUsdwSold: "USDW sold",
+  colCopReceived: "COP received",
   addPurchase: "+ Add purchase",
   noEntries: "No entries yet.",
   colCopPaid: "COP paid",
@@ -177,6 +182,11 @@ export const cryptoEs: typeof cryptoEn = {
   colUsdwBalance: "Balance USDW",
 
   usdwPurchasesTitle: "Compras de USDW (COP → USDW)",
+  usdwSalesTitle: "Ventas/gastos de USDW (USDW → COP)",
+  usdwAmountToSellLabel: "USDW a vender/gastar",
+  copReceivedLabel: "COP recibido",
+  colUsdwSold: "USDW vendido",
+  colCopReceived: "COP recibido",
   addPurchase: "+ Agregar compra",
   noEntries: "Aún no hay registros.",
   colCopPaid: "COP pagado",

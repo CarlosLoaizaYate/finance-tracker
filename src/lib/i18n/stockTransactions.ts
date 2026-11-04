@@ -30,6 +30,13 @@ export const stockTransactionsEn = {
   costBasisInline: "Cost basis:",
   alertAddFailed: "Failed to add purchase",
 
+  addSaleTitle: "Add Sale",
+  sellPriceShareLabel: "Sell Price/Share *",
+  availableSharesInline: "({{n}} available)",
+  onlySharesAvailable: "Only {{n}} shares available — reduce the amount.",
+  proceedsInline: "Proceeds:",
+  alertAddSaleFailed: "Failed to add sale",
+
   priceShareRequiredLabel: "Price / Share *",
   alertSaveFailed: "Failed to save: {{error}}",
   currentValueInline: "Current value:",
@@ -49,12 +56,20 @@ export const stockTransactionsEn = {
   netIfSoldLabel: "NET IF SOLD",
   sellCommissionPrefix: "sell commission:",
   editCommissionTitle: "Click to edit sell commission",
+  realizedGainLabel: "REALIZED GAIN (CLOSED SALES)",
 
   purchaseHistoryTitle: "Purchase History",
   addPurchaseButton: "+ Add Purchase",
   valueRequiresPricePre: "Current Value and Gain/Loss require a price entry in",
   valueRequiresPricePost: "below.",
   noPurchasesYet: "No purchases recorded yet.",
+  soldOfLotInline: "{{sold}} sold from this lot",
+
+  salesHistoryTitle: "Sales History",
+  addSaleButton: "+ Add Sale",
+  noSalesYet: "No sales recorded yet.",
+  colSellPrice: "Sell Price",
+  colProceeds: "Proceeds",
 
   colHash: "#",
   colDate: "Date",
@@ -68,6 +83,7 @@ export const stockTransactionsEn = {
   perShare: "/share",
 
   confirmDeletePurchase: "Delete this purchase?",
+  confirmDeleteSale: "Delete this sale?",
   confirmDeleteValueEntry: "Delete this value entry?",
 
   monthlyValueHistoryTitle: "Monthly Value History",
@@ -123,6 +139,13 @@ export const stockTransactionsEs: typeof stockTransactionsEn = {
   costBasisInline: "Costo base:",
   alertAddFailed: "Error al agregar la compra",
 
+  addSaleTitle: "Agregar venta",
+  sellPriceShareLabel: "Precio de venta/acción *",
+  availableSharesInline: "({{n}} disponibles)",
+  onlySharesAvailable: "Solo hay {{n}} acciones disponibles — reduce la cantidad.",
+  proceedsInline: "Recibido:",
+  alertAddSaleFailed: "Error al agregar la venta",
+
   priceShareRequiredLabel: "Precio / Acción *",
   alertSaveFailed: "Error al guardar: {{error}}",
   currentValueInline: "Valor actual:",
@@ -142,12 +165,20 @@ export const stockTransactionsEs: typeof stockTransactionsEn = {
   netIfSoldLabel: "NETO SI SE VENDE",
   sellCommissionPrefix: "com. venta:",
   editCommissionTitle: "Haz clic para editar la comisión de venta",
+  realizedGainLabel: "GANANCIA REALIZADA (VENTAS CERRADAS)",
 
   purchaseHistoryTitle: "Historial de compras",
   addPurchaseButton: "+ Agregar compra",
   valueRequiresPricePre: "El valor actual y la ganancia/pérdida requieren un precio en",
   valueRequiresPricePost: "abajo.",
   noPurchasesYet: "Aún no hay compras registradas.",
+  soldOfLotInline: "{{sold}} vendidas de este lote",
+
+  salesHistoryTitle: "Historial de ventas",
+  addSaleButton: "+ Agregar venta",
+  noSalesYet: "Aún no hay ventas registradas.",
+  colSellPrice: "Precio de venta",
+  colProceeds: "Recibido",
 
   colHash: "#",
   colDate: "Fecha",
@@ -161,6 +192,7 @@ export const stockTransactionsEs: typeof stockTransactionsEn = {
   perShare: "/acción",
 
   confirmDeletePurchase: "¿Eliminar esta compra?",
+  confirmDeleteSale: "¿Eliminar esta venta?",
   confirmDeleteValueEntry: "¿Eliminar esta entrada de valor?",
 
   monthlyValueHistoryTitle: "Historial de valor mensual",
