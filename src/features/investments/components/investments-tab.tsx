@@ -43,10 +43,11 @@ import StockTransactionsTab from "./stock-transactions-tab";
 import FixedDepositsTab from "./fixed-deposits-tab";
 import FundsTab from "./funds-tab";
 import CryptoTab from "./crypto-tab";
+import OperationsTab from "./operations-tab";
 
 export default function InvestmentsTab() {
   const { t } = useTranslation();
-  const [subTab, setSubTab] = useState<"summary" | "funds" | "transactions" | "cdts" | "crypto">("summary");
+  const [subTab, setSubTab] = useState<"summary" | "funds" | "transactions" | "cdts" | "crypto" | "operations">("summary");
   const { year, setYear, investmentMonth, setInvestmentMonth } = useDashboardStore();
 
   const { data: dbStocks = [] } = useStocks();
@@ -58,7 +59,7 @@ export default function InvestmentsTab() {
     <>
       {/* Sub-tabs */}
       <div style={{ display: "flex", gap: 8, marginBottom: 16, borderBottom: "2px solid #e5e7eb" }}>
-        {(["summary", "funds", "transactions", "cdts", "crypto"] as const).map((tab) => (
+        {(["summary", "funds", "transactions", "cdts", "crypto", "operations"] as const).map((tab) => (
           <button
             key={tab}
             onClick={() => setSubTab(tab)}
@@ -81,6 +82,7 @@ export default function InvestmentsTab() {
               transactions: t("investmentsOverview.subTabTransactions"),
               cdts: t("investmentsOverview.subTabCdts"),
               crypto: t("investmentsOverview.subTabCrypto"),
+              operations: t("investmentsOverview.subTabOperations"),
             }[tab]}
           </button>
         ))}
@@ -103,6 +105,7 @@ export default function InvestmentsTab() {
       {subTab === "transactions" && <StockTransactionsTab />}
       {subTab === "cdts" && <FixedDepositsTab />}
       {subTab === "crypto" && <CryptoTab />}
+      {subTab === "operations" && <OperationsTab />}
     </>
   );
 }

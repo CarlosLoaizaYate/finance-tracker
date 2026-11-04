@@ -169,15 +169,15 @@ interface AssetLot { amount: number; usdwCost: number; copCost: number }
  * cumulative realized gain/loss from everything already sold. */
 function fifoAssetLots(
   buys: Array<{ date: string; amount: number; usdwCost: number; copCost: number }>,
-  sells: Array<{ date: string; amount: number; usdwReceived: number; copReceived: number }>
+  sells: Array<{ id: string; date: string; amount: number; usdwReceived: number; copReceived: number }>
 ) {
   type Event =
     | { type: "buy"; date: number; amount: number; usdwCost: number; copCost: number }
-    | { type: "sell"; date: number; amount: number; usdwReceived: number; copReceived: number };
+    | { type: "sell"; date: number; id: string; amount: number; usdwReceived: number; copReceived: number };
 
   const events: Event[] = [
     ...buys.map(b => ({ type: "buy" as const, date: new Date(b.date).getTime(), amount: b.amount, usdwCost: b.usdwCost, copCost: b.copCost })),
-    ...sells.map(s => ({ type: "sell" as const, date: new Date(s.date).getTime(), amount: s.amount, usdwReceived: s.usdwReceived, copReceived: s.copReceived })),
+    ...sells.map(s => ({ type: "sell" as const, date: new Date(s.date).getTime(), id: s.id, amount: s.amount, usdwReceived: s.usdwReceived, copReceived: s.copReceived })),
   ].sort((a, b) => a.date - b.date);
 
   const lots: AssetLot[] = [];
@@ -185,6 +185,8 @@ function fifoAssetLots(
   let realizedGainCop = 0;
   let totalUsdwReceived = 0;
   let totalCopReceived = 0;
+  const realizedGainUsdwById: Record<string, number> = {};
+  const realizedGainCopById: Record<string, number> = {};
 
   for (const ev of events) {
     if (ev.type === "buy") {
@@ -209,8 +211,12 @@ function fifoAssetLots(
       }
       totalUsdwReceived += ev.usdwReceived;
       totalCopReceived += ev.copReceived;
-      realizedGainUsdw += ev.usdwReceived - costBasisUsdw;
-      realizedGainCop += ev.copReceived - costBasisCop;
+      const gainUsdw = ev.usdwReceived - costBasisUsdw;
+      const gainCop = ev.copReceived - costBasisCop;
+      realizedGainUsdw += gainUsdw;
+      realizedGainCop += gainCop;
+      realizedGainUsdwById[ev.id] = gainUsdw;
+      realizedGainCopById[ev.id] = gainCop;
     }
   }
 
@@ -218,7 +224,10 @@ function fifoAssetLots(
   const costBasisUsdwHeld = lots.reduce((s, l) => s + l.usdwCost, 0);
   const costBasisCopHeld = lots.reduce((s, l) => s + l.copCost, 0);
 
-  return { heldAmount, costBasisUsdwHeld, costBasisCopHeld, realizedGainUsdw, realizedGainCop, totalUsdwReceived, totalCopReceived };
+  return {
+    heldAmount, costBasisUsdwHeld, costBasisCopHeld, realizedGainUsdw, realizedGainCop, totalUsdwReceived, totalCopReceived,
+    realizedGainUsdwById, realizedGainCopById,
+  };
 }
 
 /** Best-available USD/COP rate at a given date: the latest snapshot at or before that date,
@@ -278,7 +287,9 @@ export function computeSummary(
   );
   // Realized gain from USDW sold/spent directly: proceeds minus the FIFO peso cost of the
   // specific dollars that left the pool for each sale.
-  const usdwRealizedGainCop = usdwSales.reduce((s, sale) => s + (sale.copReceived - (costByEventId[sale.id] ?? 0)), 0);
+  const usdwRealizedGainCopById: Record<string, number> = {};
+  usdwSales.forEach(sale => { usdwRealizedGainCopById[sale.id] = sale.copReceived - (costByEventId[sale.id] ?? 0); });
+  const usdwRealizedGainCop = usdwSales.reduce((s, sale) => s + (usdwRealizedGainCopById[sale.id] ?? 0), 0);
   const usdwTotalSoldCop = usdwSales.reduce((s, sale) => s + sale.copReceived, 0);
   // Average rate of the USDW you currently hold (FIFO cost ÷ units held).
   const avgHeldRate = usdwHeldDerived > 0 ? usdwCostBasisCop / usdwHeldDerived : 0;
@@ -288,11 +299,11 @@ export function computeSummary(
   // sale realizes gain only against the lots it actually consumes.
   const btcFifo = fifoAssetLots(
     btcPurchases.map(p => ({ date: p.date, amount: p.btcAmount, usdwCost: p.usdwAmount, copCost: costByEventId[p.id] ?? 0 })),
-    btcSales.map(s => ({ date: s.date, amount: s.btcAmount, usdwReceived: s.usdwReceived, copReceived: s.usdwReceived * usdCopRateAt(sortedSnaps, new Date(s.date).getTime()) }))
+    btcSales.map(s => ({ id: s.id, date: s.date, amount: s.btcAmount, usdwReceived: s.usdwReceived, copReceived: s.usdwReceived * usdCopRateAt(sortedSnaps, new Date(s.date).getTime()) }))
   );
   const solFifo = fifoAssetLots(
     solPurchases.map(p => ({ date: p.date, amount: p.solAmount, usdwCost: p.usdwAmount, copCost: costByEventId[p.id] ?? 0 })),
-    solSales.map(s => ({ date: s.date, amount: s.solAmount, usdwReceived: s.usdwReceived, copReceived: s.usdwReceived * usdCopRateAt(sortedSnaps, new Date(s.date).getTime()) }))
+    solSales.map(s => ({ id: s.id, date: s.date, amount: s.solAmount, usdwReceived: s.usdwReceived, copReceived: s.usdwReceived * usdCopRateAt(sortedSnaps, new Date(s.date).getTime()) }))
   );
 
   // If you've manually recorded your actual USDW balance (e.g. to reflect interest earned), use
@@ -364,6 +375,7 @@ export function computeSummary(
     usdwGainCop,
     usdwRealizedGainCop,
     usdwTotalSoldCop,
+    usdwRealizedGainCopById,
     avgHeldRate,
     usdCopRateNow,
     usdGrowthPct,
@@ -382,6 +394,7 @@ export function computeSummary(
     btcRealizedGainUsdw: btcFifo.realizedGainUsdw,
     btcRealizedGainCop: btcFifo.realizedGainCop,
     btcTotalSoldUsdwReceived: btcFifo.totalUsdwReceived,
+    btcRealizedGainCopById: btcFifo.realizedGainCopById,
     solHeld: solFifo.heldAmount,
     solCostUsdw: solFifo.costBasisUsdwHeld,
     solCostBasisCop: solFifo.costBasisCopHeld,
@@ -395,6 +408,7 @@ export function computeSummary(
     solRealizedGainUsdw: solFifo.realizedGainUsdw,
     solRealizedGainCop: solFifo.realizedGainCop,
     solTotalSoldUsdwReceived: solFifo.totalUsdwReceived,
+    solRealizedGainCopById: solFifo.realizedGainCopById,
     latestSnapshot,
   };
 }
@@ -443,11 +457,11 @@ export function computeCryptoValueAtMonth(
 
   const btcFifo = fifoAssetLots(
     relevantBtc.map(p => ({ date: p.date, amount: p.btcAmount, usdwCost: p.usdwAmount, copCost: costByEventId[p.id] ?? 0 })),
-    relevantBtcSales.map(s => ({ date: s.date, amount: s.btcAmount, usdwReceived: s.usdwReceived, copReceived: s.usdwReceived * usdCopRateAt(relevantSnaps, new Date(s.date).getTime()) }))
+    relevantBtcSales.map(s => ({ id: s.id, date: s.date, amount: s.btcAmount, usdwReceived: s.usdwReceived, copReceived: s.usdwReceived * usdCopRateAt(relevantSnaps, new Date(s.date).getTime()) }))
   );
   const solFifo = fifoAssetLots(
     relevantSol.map(p => ({ date: p.date, amount: p.solAmount, usdwCost: p.usdwAmount, copCost: costByEventId[p.id] ?? 0 })),
-    relevantSolSales.map(s => ({ date: s.date, amount: s.solAmount, usdwReceived: s.usdwReceived, copReceived: s.usdwReceived * usdCopRateAt(relevantSnaps, new Date(s.date).getTime()) }))
+    relevantSolSales.map(s => ({ id: s.id, date: s.date, amount: s.solAmount, usdwReceived: s.usdwReceived, copReceived: s.usdwReceived * usdCopRateAt(relevantSnaps, new Date(s.date).getTime()) }))
   );
 
   const usdwDeltas = [

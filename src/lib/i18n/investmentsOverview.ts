@@ -4,6 +4,7 @@ export const investmentsOverviewEn = {
   subTabTransactions: "Stock Transactions",
   subTabCdts: "CDTs",
   subTabCrypto: "Crypto",
+  subTabOperations: "Operations",
 
   noEntriesYet: "No entries yet.",
   colName: "Name",
@@ -44,6 +45,7 @@ export const investmentsOverviewEs: typeof investmentsOverviewEn = {
   subTabTransactions: "Transacciones de acciones",
   subTabCdts: "CDTs",
   subTabCrypto: "Cripto",
+  subTabOperations: "Operaciones",
 
   noEntriesYet: "Aún no hay registros.",
   colName: "Nombre",

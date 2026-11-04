@@ -41,20 +41,21 @@ interface StockLot { id: string; quantity: number; sharesCost: number; commissio
  * FIFO pattern (see crypto-tab.tsx), but in a single currency since stocks are COP-native. */
 function fifoStockLots(
     buys: Array<{ id: string; date: string; quantity: number; sharesCost: number; commissionCost: number }>,
-    sells: Array<{ date: string; quantity: number; proceeds: number }>
+    sells: Array<{ id: string; date: string; quantity: number; proceeds: number }>
 ) {
     type Event =
         | { type: "buy"; date: number; id: string; quantity: number; sharesCost: number; commissionCost: number }
-        | { type: "sell"; date: number; quantity: number; proceeds: number };
+        | { type: "sell"; date: number; id: string; quantity: number; proceeds: number };
 
     const events: Event[] = [
         ...buys.map(b => ({ type: "buy" as const, date: new Date(b.date).getTime(), id: b.id, quantity: b.quantity, sharesCost: b.sharesCost, commissionCost: b.commissionCost })),
-        ...sells.map(s => ({ type: "sell" as const, date: new Date(s.date).getTime(), quantity: s.quantity, proceeds: s.proceeds })),
+        ...sells.map(s => ({ type: "sell" as const, date: new Date(s.date).getTime(), id: s.id, quantity: s.quantity, proceeds: s.proceeds })),
     ].sort((a, b) => a.date - b.date);
 
     const lots: StockLot[] = [];
     let realizedGain = 0;
     let totalProceeds = 0;
+    const realizedGainBySaleId: Record<string, number> = {};
 
     for (const ev of events) {
         if (ev.type === "buy") {
@@ -76,7 +77,9 @@ function fifoStockLots(
                 if (lot.quantity <= 0) lots.shift();
             }
             totalProceeds += ev.proceeds;
-            realizedGain += ev.proceeds - costBasis;
+            const gain = ev.proceeds - costBasis;
+            realizedGain += gain;
+            realizedGainBySaleId[ev.id] = gain;
         }
     }
 
@@ -86,7 +89,7 @@ function fifoStockLots(
     const remainingByTxId: Record<string, number> = {};
     lots.forEach(l => { remainingByTxId[l.id] = (remainingByTxId[l.id] ?? 0) + l.quantity; });
 
-    return { heldShares, sharesCostHeld, commissionCostHeld, realizedGain, totalProceeds, remainingByTxId };
+    return { heldShares, sharesCostHeld, commissionCostHeld, realizedGain, totalProceeds, remainingByTxId, realizedGainBySaleId };
 }
 
 /** Single source of truth for "what do I actually still hold" once sales exist — held shares,
@@ -95,7 +98,7 @@ function fifoStockLots(
 export function computeStockPosition(txs: StockTransaction[], sales: StockSale[] = []) {
     const r = fifoStockLots(
         txs.map(t => ({ id: t.id, date: t.transactionDate, quantity: t.quantity, sharesCost: t.quantity * t.priceUnit, commissionCost: t.commission })),
-        sales.map(s => ({ date: s.saleDate, quantity: s.quantity, proceeds: s.quantity * s.priceUnit - s.commission }))
+        sales.map(s => ({ id: s.id, date: s.saleDate, quantity: s.quantity, proceeds: s.quantity * s.priceUnit - s.commission }))
     );
     return {
         heldShares: r.heldShares,
@@ -104,6 +107,7 @@ export function computeStockPosition(txs: StockTransaction[], sales: StockSale[]
         realizedGain: r.realizedGain,
         totalProceeds: r.totalProceeds,
         remainingByTxId: r.remainingByTxId,
+        realizedGainBySaleId: r.realizedGainBySaleId,
     };
 }
 

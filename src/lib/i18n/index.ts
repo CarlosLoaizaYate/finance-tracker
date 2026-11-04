@@ -5,6 +5,7 @@ import { expensesEn, expensesEs } from "./expenses";
 import { fixedDepositsEn, fixedDepositsEs } from "./fixedDeposits";
 import { fundsEn, fundsEs } from "./funds";
 import { investmentsOverviewEn, investmentsOverviewEs } from "./investmentsOverview";
+import { operationsEn, operationsEs } from "./operations";
 import { settingsEn, settingsEs } from "./settings";
 import { stockTransactionsEn, stockTransactionsEs } from "./stockTransactions";
 import { summaryEn, summaryEs } from "./summary";
@@ -18,6 +19,7 @@ export const translations = {
     fixedDeposits: fixedDepositsEn,
     funds: fundsEn,
     investmentsOverview: investmentsOverviewEn,
+    operations: operationsEn,
     settings: settingsEn,
     stockTransactions: stockTransactionsEn,
     summary: summaryEn,
@@ -30,6 +32,7 @@ export const translations = {
     fixedDeposits: fixedDepositsEs,
     funds: fundsEs,
     investmentsOverview: investmentsOverviewEs,
+    operations: operationsEs,
     settings: settingsEs,
     stockTransactions: stockTransactionsEs,
     summary: summaryEs,
