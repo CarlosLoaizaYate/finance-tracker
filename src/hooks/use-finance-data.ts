@@ -773,6 +773,28 @@ export interface SolPurchase {
   createdAt: string;
 }
 
+export interface BtcSale {
+  id: string;
+  date: string;
+  btcAmount: number;
+  commissionUsdw: number;
+  btcPriceUsdw: number;
+  usdwReceived: number;
+  notes: string;
+  createdAt: string;
+}
+
+export interface SolSale {
+  id: string;
+  date: string;
+  solAmount: number;
+  commissionUsdw: number;
+  solPriceUsdw: number;
+  usdwReceived: number;
+  notes: string;
+  createdAt: string;
+}
+
 export interface CryptoSnapshot {
   id: string;
   day: number;
@@ -869,6 +891,66 @@ export function useDeleteSolPurchase() {
   });
 }
 
+export function useBtcSales() {
+  return useQuery<BtcSale[]>({
+    queryKey: ["btc-sales"],
+    queryFn: () => get("/api/btc-sales"),
+  });
+}
+
+export function useAddBtcSale() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: {
+      date: string;
+      btcAmount: number;
+      commissionUsdw: number;
+      btcPriceUsdw: number;
+      usdwReceived: number;
+      notes?: string;
+    }) => post("/api/btc-sales", data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["btc-sales"] }),
+  });
+}
+
+export function useDeleteBtcSale() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => del(`/api/btc-sales/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["btc-sales"] }),
+  });
+}
+
+export function useSolSales() {
+  return useQuery<SolSale[]>({
+    queryKey: ["sol-sales"],
+    queryFn: () => get("/api/sol-sales"),
+  });
+}
+
+export function useAddSolSale() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: {
+      date: string;
+      solAmount: number;
+      commissionUsdw: number;
+      solPriceUsdw: number;
+      usdwReceived: number;
+      notes?: string;
+    }) => post("/api/sol-sales", data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["sol-sales"] }),
+  });
+}
+
+export function useDeleteSolSale() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => del(`/api/sol-sales/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["sol-sales"] }),
+  });
+}
+
 export function useCryptoSnapshots() {
   return useQuery<CryptoSnapshot[]>({
     queryKey: ["crypto-snapshots"],
@@ -895,7 +977,12 @@ export function useDeleteCryptoSnapshot() {
 }
 
 export function useCryptoSettings() {
-  return useQuery<{ sellCommission: number; commissionRate: number }>({
+  return useQuery<{
+    sellCommission: number;
+    commissionRate: number;
+    btcTargetGrowthPct: number | null;
+    solTargetGrowthPct: number | null;
+  }>({
     queryKey: ["crypto-settings"],
     queryFn: () => get("/api/crypto-settings"),
   });
@@ -913,6 +1000,22 @@ export function useUpdateCryptoCommissionRate() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (commissionRate: number) => put("/api/crypto-settings", { commissionRate }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["crypto-settings"] }),
+  });
+}
+
+export function useUpdateBtcTargetGrowthPct() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (btcTargetGrowthPct: number | null) => put("/api/crypto-settings", { btcTargetGrowthPct }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["crypto-settings"] }),
+  });
+}
+
+export function useUpdateSolTargetGrowthPct() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (solTargetGrowthPct: number | null) => put("/api/crypto-settings", { solTargetGrowthPct }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["crypto-settings"] }),
   });
 }

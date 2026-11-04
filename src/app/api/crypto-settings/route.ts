@@ -9,6 +9,8 @@ export async function GET() {
   return NextResponse.json({
     sellCommission: user.cryptoSellCommission,
     commissionRate: user.cryptoCommissionRate,
+    btcTargetGrowthPct: user.btcTargetGrowthPct,
+    solTargetGrowthPct: user.solTargetGrowthPct,
   });
 }
 
@@ -22,11 +24,15 @@ export async function PUT(req: NextRequest) {
     data: {
       ...(body.sellCommission !== undefined && { cryptoSellCommission: body.sellCommission }),
       ...(body.commissionRate !== undefined && { cryptoCommissionRate: body.commissionRate }),
+      ...(body.btcTargetGrowthPct !== undefined && { btcTargetGrowthPct: body.btcTargetGrowthPct }),
+      ...(body.solTargetGrowthPct !== undefined && { solTargetGrowthPct: body.solTargetGrowthPct }),
     },
   });
 
   return NextResponse.json({
     sellCommission: updated.cryptoSellCommission,
     commissionRate: updated.cryptoCommissionRate,
+    btcTargetGrowthPct: updated.btcTargetGrowthPct,
+    solTargetGrowthPct: updated.solTargetGrowthPct,
   });
 }

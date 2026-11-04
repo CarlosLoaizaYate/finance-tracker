@@ -19,6 +19,8 @@ import {
   useUsdwPurchases,
   useBtcPurchases,
   useSolPurchases,
+  useBtcSales,
+  useSolSales,
   useCryptoSnapshots,
   useCryptoSettings,
   useCardInstallments,
@@ -252,6 +254,8 @@ function InvestmentsSummarySection() {
   const { data: usdwPurchases = [] } = useUsdwPurchases();
   const { data: btcPurchases = [] } = useBtcPurchases();
   const { data: solPurchases = [] } = useSolPurchases();
+  const { data: btcSales = [] } = useBtcSales();
+  const { data: solSales = [] } = useSolSales();
   const { data: cryptoSnapshots = [] } = useCryptoSnapshots();
   const { data: cryptoSettings } = useCryptoSettings();
 
@@ -279,8 +283,8 @@ function InvestmentsSummarySection() {
 
   // Crypto (USDW + BTC + SOL)
   const cryptoSummary = useMemo(
-    () => computeCryptoSummary(usdwPurchases, btcPurchases, cryptoSnapshots, solPurchases),
-    [usdwPurchases, btcPurchases, cryptoSnapshots, solPurchases]
+    () => computeCryptoSummary(usdwPurchases, btcPurchases, cryptoSnapshots, solPurchases, btcSales, solSales),
+    [usdwPurchases, btcPurchases, cryptoSnapshots, solPurchases, btcSales, solSales]
   );
   const cryptoInvested = useMemo(
     () => usdwPurchases.reduce((s, p) => s + p.copAmount, 0),
@@ -526,6 +530,8 @@ function InvestmentChartsSection() {
   const { data: usdwPurchases = [] } = useUsdwPurchases();
   const { data: btcPurchases = [] } = useBtcPurchases();
   const { data: solPurchases = [] } = useSolPurchases();
+  const { data: btcSales = [] } = useBtcSales();
+  const { data: solSales = [] } = useSolSales();
   const { data: cryptoSnapshots = [] } = useCryptoSnapshots();
 
   const txByInv = useMemo(() => {
@@ -585,13 +591,13 @@ function InvestmentChartsSection() {
 
     if (usdwPurchases.length > 0 || btcPurchases.length > 0 || solPurchases.length > 0) {
       const invested = usdwPurchases.reduce((s, p) => s + p.copAmount, 0);
-      const summary = computeCryptoSummary(usdwPurchases, btcPurchases, cryptoSnapshots, solPurchases);
+      const summary = computeCryptoSummary(usdwPurchases, btcPurchases, cryptoSnapshots, solPurchases, btcSales, solSales);
       result.push({ name: t("summary.crypto"), color: "#f59e0b", invested, current: summary.usdValueCop + summary.btcValueCop + summary.solValueCop });
     }
 
     return result;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dbStocks, txByInv, priceSnapByInv, funds, depositGroups, usdwPurchases, btcPurchases, solPurchases, cryptoSnapshots, language]);
+  }, [dbStocks, txByInv, priceSnapByInv, funds, depositGroups, usdwPurchases, btcPurchases, solPurchases, btcSales, solSales, cryptoSnapshots, language]);
 
   if (rows.length === 0) return null;
 

@@ -11,15 +11,25 @@ import {
   useSolPurchases,
   useAddSolPurchase,
   useDeleteSolPurchase,
+  useBtcSales,
+  useAddBtcSale,
+  useDeleteBtcSale,
+  useSolSales,
+  useAddSolSale,
+  useDeleteSolSale,
   useCryptoSnapshots,
   useUpsertCryptoSnapshot,
   useDeleteCryptoSnapshot,
   useCryptoSettings,
   useUpdateCryptoSellCommission,
   useUpdateCryptoCommissionRate,
+  useUpdateBtcTargetGrowthPct,
+  useUpdateSolTargetGrowthPct,
   type UsdwPurchase,
   type BtcPurchase,
   type SolPurchase,
+  type BtcSale,
+  type SolSale,
   type CryptoSnapshot,
 } from "@/hooks/use-finance-data";
 import EditableCell from "@/components/ui/editable-cell";
@@ -99,26 +109,30 @@ export function compareSnapshots(a: CryptoSnapshot, b: CryptoSnapshot): number {
 
 interface UsdwLot { usdw: number; rateCop: number }
 
-/** Walks USDW purchases and every crypto exchange that spends USDW (BTC, SOL, ...) in
- * chronological order, consuming USDW lots FIFO (oldest purchase first) — the standard
- * "which specific dollars are these" accounting method. Returns what's left (by original
- * purchase rate) and the FIFO-attributed peso cost of everything spent, broken down by
- * which asset it was spent on. */
+/** Walks USDW purchases, every crypto exchange that spends USDW (BTC, SOL, ...), and every
+ * USDW "receipt" (e.g. proceeds re-entering the pool from a BTC/SOL sale) in chronological
+ * order, consuming USDW lots FIFO (oldest purchase first) — the standard "which specific
+ * dollars are these" accounting method. Returns what's left (by original purchase rate), the
+ * FIFO-attributed peso cost of everything spent (by asset kind, and per individual spend event
+ * — the latter lets a caller build per-purchase cost basis for a specific BTC/SOL lot). */
 function fifoUsdwLots(
   usdwPurchases: UsdwPurchase[],
-  spends: Array<{ date: string; usdwAmount: number; kind: string }>
+  spends: Array<{ id: string; date: string; usdwAmount: number; kind: string }>,
+  receipts: Array<{ date: string; usdwAmount: number; copValue: number }> = []
 ) {
   type Event =
     | { type: "usdw"; date: number; usdwAmount: number; copAmount: number }
-    | { type: "spend"; date: number; usdwAmount: number; kind: string };
+    | { type: "spend"; date: number; usdwAmount: number; kind: string; id: string };
 
   const events: Event[] = [
     ...usdwPurchases.map(p => ({ type: "usdw" as const, date: new Date(p.date).getTime(), usdwAmount: p.usdwAmount, copAmount: p.copAmount })),
-    ...spends.map(p => ({ type: "spend" as const, date: new Date(p.date).getTime(), usdwAmount: p.usdwAmount, kind: p.kind })),
+    ...receipts.map(r => ({ type: "usdw" as const, date: new Date(r.date).getTime(), usdwAmount: r.usdwAmount, copAmount: r.copValue })),
+    ...spends.map(p => ({ type: "spend" as const, date: new Date(p.date).getTime(), usdwAmount: p.usdwAmount, kind: p.kind, id: p.id })),
   ].sort((a, b) => a.date - b.date);
 
   const lots: UsdwLot[] = [];
   const costBasisByKind: Record<string, number> = {};
+  const costByEventId: Record<string, number> = {};
 
   for (const ev of events) {
     if (ev.type === "usdw") {
@@ -128,7 +142,9 @@ function fifoUsdwLots(
       while (remaining > 1e-9 && lots.length > 0) {
         const lot = lots[0];
         const consumed = Math.min(lot.usdw, remaining);
-        costBasisByKind[ev.kind] = (costBasisByKind[ev.kind] ?? 0) + consumed * lot.rateCop;
+        const cost = consumed * lot.rateCop;
+        costBasisByKind[ev.kind] = (costBasisByKind[ev.kind] ?? 0) + cost;
+        costByEventId[ev.id] = (costByEventId[ev.id] ?? 0) + cost;
         lot.usdw -= consumed;
         remaining -= consumed;
         if (lot.usdw <= 1e-9) lots.shift();
@@ -138,25 +154,90 @@ function fifoUsdwLots(
 
   const usdwHeldDerived = lots.reduce((s, l) => s + l.usdw, 0);
   const usdwCostBasisCop = lots.reduce((s, l) => s + l.usdw * l.rateCop, 0);
-  return { usdwHeldDerived, usdwCostBasisCop, costBasisByKind };
+  return { usdwHeldDerived, usdwCostBasisCop, costBasisByKind, costByEventId };
 }
 
-/** Rolls a manually-recorded USDW balance forward by any purchases/exchanges dated *after* it,
- * so buying more USDW (or spending it on BTC) is reflected immediately without having to
- * re-enter your rates/balance every time — only needed once a month to true-up interest earned. */
+interface AssetLot { amount: number; usdwCost: number; copCost: number }
+
+/** FIFO-matches sales against buy lots of a single crypto asset (oldest units sold first), so a
+ * partial sell realizes gain only on the specific units it closes out — not a blend of your
+ * whole position. Returns the cost basis of what's left (for unrealized gain) plus the
+ * cumulative realized gain/loss from everything already sold. */
+function fifoAssetLots(
+  buys: Array<{ date: string; amount: number; usdwCost: number; copCost: number }>,
+  sells: Array<{ date: string; amount: number; usdwReceived: number; copReceived: number }>
+) {
+  type Event =
+    | { type: "buy"; date: number; amount: number; usdwCost: number; copCost: number }
+    | { type: "sell"; date: number; amount: number; usdwReceived: number; copReceived: number };
+
+  const events: Event[] = [
+    ...buys.map(b => ({ type: "buy" as const, date: new Date(b.date).getTime(), amount: b.amount, usdwCost: b.usdwCost, copCost: b.copCost })),
+    ...sells.map(s => ({ type: "sell" as const, date: new Date(s.date).getTime(), amount: s.amount, usdwReceived: s.usdwReceived, copReceived: s.copReceived })),
+  ].sort((a, b) => a.date - b.date);
+
+  const lots: AssetLot[] = [];
+  let realizedGainUsdw = 0;
+  let realizedGainCop = 0;
+  let totalUsdwReceived = 0;
+  let totalCopReceived = 0;
+
+  for (const ev of events) {
+    if (ev.type === "buy") {
+      if (ev.amount > 0) lots.push({ amount: ev.amount, usdwCost: ev.usdwCost, copCost: ev.copCost });
+    } else {
+      let remaining = ev.amount;
+      let costBasisUsdw = 0;
+      let costBasisCop = 0;
+      while (remaining > 1e-12 && lots.length > 0) {
+        const lot = lots[0];
+        const consumed = Math.min(lot.amount, remaining);
+        const frac = consumed / lot.amount;
+        const consumedUsdwCost = lot.usdwCost * frac;
+        const consumedCopCost = lot.copCost * frac;
+        costBasisUsdw += consumedUsdwCost;
+        costBasisCop += consumedCopCost;
+        lot.amount -= consumed;
+        lot.usdwCost -= consumedUsdwCost;
+        lot.copCost -= consumedCopCost;
+        remaining -= consumed;
+        if (lot.amount <= 1e-12) lots.shift();
+      }
+      totalUsdwReceived += ev.usdwReceived;
+      totalCopReceived += ev.copReceived;
+      realizedGainUsdw += ev.usdwReceived - costBasisUsdw;
+      realizedGainCop += ev.copReceived - costBasisCop;
+    }
+  }
+
+  const heldAmount = lots.reduce((s, l) => s + l.amount, 0);
+  const costBasisUsdwHeld = lots.reduce((s, l) => s + l.usdwCost, 0);
+  const costBasisCopHeld = lots.reduce((s, l) => s + l.copCost, 0);
+
+  return { heldAmount, costBasisUsdwHeld, costBasisCopHeld, realizedGainUsdw, realizedGainCop, totalUsdwReceived, totalCopReceived };
+}
+
+/** Best-available USD/COP rate at a given date: the latest snapshot at or before that date,
+ * falling back to the earliest one available, or 0 if there are no snapshots at all yet. Used to
+ * price USDW proceeds re-entering the pool from a crypto sale at the rate that applied *then*. */
+function usdCopRateAt(sortedSnaps: CryptoSnapshot[], dateMs: number): number {
+  if (sortedSnaps.length === 0) return 0;
+  const priorOrSame = sortedSnaps.filter(s => new Date(s.year, s.month - 1, s.day).getTime() <= dateMs).at(-1);
+  return (priorOrSame ?? sortedSnaps[0]).usdCopRate;
+}
+
+/** Rolls a manually-recorded USDW balance forward by any dated USDW deltas after it — purchases
+ * and crypto-sale proceeds add, BTC/SOL buys subtract — so new activity shows up immediately
+ * without having to re-enter your real balance every time. */
 function rollForwardUsdwBalance(
   balance: number,
   balanceDateMs: number,
-  usdwPurchases: UsdwPurchase[],
-  spends: Array<{ date: string; usdwAmount: number }>
+  deltas: Array<{ date: string; usdwDelta: number }>
 ): number {
-  const purchasesAfter = usdwPurchases
-    .filter(p => new Date(p.date).getTime() > balanceDateMs)
-    .reduce((s, p) => s + p.usdwAmount, 0);
-  const spentAfter = spends
-    .filter(p => new Date(p.date).getTime() > balanceDateMs)
-    .reduce((s, p) => s + p.usdwAmount, 0);
-  return balance + purchasesAfter - spentAfter;
+  const after = deltas
+    .filter(d => new Date(d.date).getTime() > balanceDateMs)
+    .reduce((s, d) => s + d.usdwDelta, 0);
+  return balance + after;
 }
 
 // ── Summary calculations ────────────────────────────────────────────────
@@ -165,39 +246,60 @@ export function computeSummary(
   usdwPurchases: UsdwPurchase[],
   btcPurchases: BtcPurchase[],
   snapshots: CryptoSnapshot[],
-  solPurchases: SolPurchase[] = []
+  solPurchases: SolPurchase[] = [],
+  btcSales: BtcSale[] = [],
+  solSales: SolSale[] = []
 ) {
-  const totalUsdwSpentOnBtc = btcPurchases.reduce((s, p) => s + p.usdwAmount, 0);
-  const totalBtcBought = btcPurchases.reduce((s, p) => s + p.btcAmount, 0);
-  const totalUsdwSpentOnSol = solPurchases.reduce((s, p) => s + p.usdwAmount, 0);
-  const totalSolBought = solPurchases.reduce((s, p) => s + p.solAmount, 0);
-
-  // FIFO: the USDW units you still hold are specifically the *last* dollars you bought that
-  // haven't been spent yet — not a blend of every purchase you've ever made. BTC and SOL draw
-  // from the same shared USDW pool, so both spend streams are interleaved chronologically.
-  const spends = [
-    ...btcPurchases.map(p => ({ date: p.date, usdwAmount: p.usdwAmount, kind: "btc" })),
-    ...solPurchases.map(p => ({ date: p.date, usdwAmount: p.usdwAmount, kind: "sol" })),
-  ];
-  const { usdwHeldDerived, usdwCostBasisCop, costBasisByKind } = fifoUsdwLots(usdwPurchases, spends);
-  const btcCostBasisCop = costBasisByKind.btc ?? 0;
-  const solCostBasisCop = costBasisByKind.sol ?? 0;
-  // Average rate of the USDW you currently hold (FIFO cost ÷ units held).
-  const avgHeldRate = usdwHeldDerived > 0 ? usdwCostBasisCop / usdwHeldDerived : 0;
-
   const sortedSnaps = [...snapshots].sort(compareSnapshots);
   const latestSnapshot = sortedSnaps.at(-1) ?? null;
 
+  // BTC/SOL sale proceeds re-enter the shared USDW pool as a fresh lot, priced at the USD/COP
+  // rate in effect on the day of the sale — you're realizing today's dollars, not carrying the
+  // crypto's old cost basis forward into the pool.
+  const btcSaleReceipts = btcSales.map(s => ({ date: s.date, usdwAmount: s.usdwReceived, copValue: s.usdwReceived * usdCopRateAt(sortedSnaps, new Date(s.date).getTime()) }));
+  const solSaleReceipts = solSales.map(s => ({ date: s.date, usdwAmount: s.usdwReceived, copValue: s.usdwReceived * usdCopRateAt(sortedSnaps, new Date(s.date).getTime()) }));
+
+  // FIFO: the USDW units you still hold are specifically the *last* dollars you bought that
+  // haven't been spent yet — not a blend of every purchase you've ever made. BTC and SOL draw
+  // from the same shared USDW pool, so both spend/receipt streams are interleaved chronologically.
+  const spends = [
+    ...btcPurchases.map(p => ({ id: p.id, date: p.date, usdwAmount: p.usdwAmount, kind: "btc" })),
+    ...solPurchases.map(p => ({ id: p.id, date: p.date, usdwAmount: p.usdwAmount, kind: "sol" })),
+  ];
+  const { usdwHeldDerived, usdwCostBasisCop, costByEventId } = fifoUsdwLots(
+    usdwPurchases, spends, [...btcSaleReceipts, ...solSaleReceipts]
+  );
+  // Average rate of the USDW you currently hold (FIFO cost ÷ units held).
+  const avgHeldRate = usdwHeldDerived > 0 ? usdwCostBasisCop / usdwHeldDerived : 0;
+
+  // Per-asset FIFO: which specific BTC/SOL units a sale closes out, so the cost basis (and
+  // "growth since purchase") of what you still hold excludes anything already sold, and every
+  // sale realizes gain only against the lots it actually consumes.
+  const btcFifo = fifoAssetLots(
+    btcPurchases.map(p => ({ date: p.date, amount: p.btcAmount, usdwCost: p.usdwAmount, copCost: costByEventId[p.id] ?? 0 })),
+    btcSales.map(s => ({ date: s.date, amount: s.btcAmount, usdwReceived: s.usdwReceived, copReceived: s.usdwReceived * usdCopRateAt(sortedSnaps, new Date(s.date).getTime()) }))
+  );
+  const solFifo = fifoAssetLots(
+    solPurchases.map(p => ({ date: p.date, amount: p.solAmount, usdwCost: p.usdwAmount, copCost: costByEventId[p.id] ?? 0 })),
+    solSales.map(s => ({ date: s.date, amount: s.solAmount, usdwReceived: s.usdwReceived, copReceived: s.usdwReceived * usdCopRateAt(sortedSnaps, new Date(s.date).getTime()) }))
+  );
+
   // If you've manually recorded your actual USDW balance (e.g. to reflect interest earned), use
-  // that as the base and roll it forward by any purchases/exchanges made since that date — so
-  // new activity shows up immediately, and you only need to re-enter your real balance monthly.
+  // that as the base and roll it forward by any purchases/exchanges/sales made since that date —
+  // so new activity shows up immediately, and you only need to re-enter your real balance monthly.
   const hasUsdwBalanceOverride = latestSnapshot?.usdwBalance != null;
+  const usdwDeltas = [
+    ...usdwPurchases.map(p => ({ date: p.date, usdwDelta: p.usdwAmount })),
+    ...btcPurchases.map(p => ({ date: p.date, usdwDelta: -p.usdwAmount })),
+    ...solPurchases.map(p => ({ date: p.date, usdwDelta: -p.usdwAmount })),
+    ...btcSales.map(s => ({ date: s.date, usdwDelta: s.usdwReceived })),
+    ...solSales.map(s => ({ date: s.date, usdwDelta: s.usdwReceived })),
+  ];
   const usdwHeld = latestSnapshot?.usdwBalance != null
     ? rollForwardUsdwBalance(
         latestSnapshot.usdwBalance,
         new Date(latestSnapshot.year, latestSnapshot.month - 1, latestSnapshot.day).getTime(),
-        usdwPurchases,
-        spends
+        usdwDeltas
       )
     : usdwHeldDerived;
 
@@ -216,28 +318,30 @@ export function computeSummary(
   // usdwGainUsd × rate.
   const usdwGainCop = usdValueCop - usdwCostBasisCop;
 
-  // Average price you actually paid per BTC (in USDW), so you can compare it to the current price.
-  const avgBtcBuyPriceUsdw = totalBtcBought > 0 ? totalUsdwSpentOnBtc / totalBtcBought : 0;
+  // Average price you actually paid per BTC (in USDW) for the units you STILL hold (post-sales),
+  // so you can compare it to the current price.
+  const avgBtcBuyPriceUsdw = btcFifo.heldAmount > 0 ? btcFifo.costBasisUsdwHeld / btcFifo.heldAmount : 0;
   const btcPriceUsdNow = latestSnapshot?.btcPriceUsd ?? avgBtcBuyPriceUsdw;
-  const btcValueUsd = totalBtcBought * btcPriceUsdNow;
-  const btcGrowthPct = totalUsdwSpentOnBtc > 0 ? ((btcValueUsd / totalUsdwSpentOnBtc) - 1) * 100 : 0;
+  const btcValueUsd = btcFifo.heldAmount * btcPriceUsdNow;
+  const btcGrowthPct = btcFifo.costBasisUsdwHeld > 0 ? ((btcValueUsd / btcFifo.costBasisUsdwHeld) - 1) * 100 : 0;
   const btcValueCop = btcValueUsd * usdCopRateNow;
-  // Gain in USD: BTC price appreciation at the latest registered price, vs. the USDW you spent.
-  const btcGainUsd = btcValueUsd - totalUsdwSpentOnBtc;
-  // Gain in COP: real peso profit — current value at the latest rate minus the FIFO peso cost of
-  // the specific USDW lots that were spent on this BTC.
-  const btcGainCop = btcValueCop - btcCostBasisCop;
+  // Gain in USD: BTC price appreciation at the latest registered price, vs. the USDW cost basis of
+  // the units you still hold (open position only — closed trades are in btcRealizedGain* instead).
+  const btcGainUsd = btcValueUsd - btcFifo.costBasisUsdwHeld;
+  // Gain in COP: real peso profit on your open position — current value at the latest rate minus
+  // the FIFO peso cost of the specific USDW lots spent on the BTC you still hold.
+  const btcGainCop = btcValueCop - btcFifo.costBasisCopHeld;
 
   // Same math as BTC above, for SOL.
-  const avgSolBuyPriceUsdw = totalSolBought > 0 ? totalUsdwSpentOnSol / totalSolBought : 0;
+  const avgSolBuyPriceUsdw = solFifo.heldAmount > 0 ? solFifo.costBasisUsdwHeld / solFifo.heldAmount : 0;
   // solPriceUsd defaults to 0 on snapshots saved before a SOL price was ever entered — treat that
   // the same as "not set" (unlike BTC's price, which was always a required, real value).
   const solPriceUsdNow = latestSnapshot?.solPriceUsd ? latestSnapshot.solPriceUsd : avgSolBuyPriceUsdw;
-  const solValueUsd = totalSolBought * solPriceUsdNow;
-  const solGrowthPct = totalUsdwSpentOnSol > 0 ? ((solValueUsd / totalUsdwSpentOnSol) - 1) * 100 : 0;
+  const solValueUsd = solFifo.heldAmount * solPriceUsdNow;
+  const solGrowthPct = solFifo.costBasisUsdwHeld > 0 ? ((solValueUsd / solFifo.costBasisUsdwHeld) - 1) * 100 : 0;
   const solValueCop = solValueUsd * usdCopRateNow;
-  const solGainUsd = solValueUsd - totalUsdwSpentOnSol;
-  const solGainCop = solValueCop - solCostBasisCop;
+  const solGainUsd = solValueUsd - solFifo.costBasisUsdwHeld;
+  const solGainCop = solValueCop - solFifo.costBasisCopHeld;
 
   return {
     usdwHeld,
@@ -251,9 +355,9 @@ export function computeSummary(
     usdGrowthPct,
     usdwFxEffectCop,
     usdValueCop,
-    btcHeld: totalBtcBought,
-    btcCostUsdw: totalUsdwSpentOnBtc,
-    btcCostBasisCop,
+    btcHeld: btcFifo.heldAmount,
+    btcCostUsdw: btcFifo.costBasisUsdwHeld,
+    btcCostBasisCop: btcFifo.costBasisCopHeld,
     avgBtcBuyPriceUsdw,
     btcPriceUsdNow,
     btcValueUsd,
@@ -261,9 +365,12 @@ export function computeSummary(
     btcGrowthPct,
     btcGainUsd,
     btcGainCop,
-    solHeld: totalSolBought,
-    solCostUsdw: totalUsdwSpentOnSol,
-    solCostBasisCop,
+    btcRealizedGainUsdw: btcFifo.realizedGainUsdw,
+    btcRealizedGainCop: btcFifo.realizedGainCop,
+    btcTotalSoldUsdwReceived: btcFifo.totalUsdwReceived,
+    solHeld: solFifo.heldAmount,
+    solCostUsdw: solFifo.costBasisUsdwHeld,
+    solCostBasisCop: solFifo.costBasisCopHeld,
     avgSolBuyPriceUsdw,
     solPriceUsdNow,
     solValueUsd,
@@ -271,61 +378,84 @@ export function computeSummary(
     solGrowthPct,
     solGainUsd,
     solGainCop,
+    solRealizedGainUsdw: solFifo.realizedGainUsdw,
+    solRealizedGainCop: solFifo.realizedGainCop,
+    solTotalSoldUsdwReceived: solFifo.totalUsdwReceived,
     latestSnapshot,
   };
 }
 
 /** Portfolio-chart helper: invested COP + current COP value of the crypto position as of a given
- * absolute month (year*12 + monthIndex), using only purchases/snapshots up to that month. */
+ * absolute month (year*12 + monthIndex), using only purchases/sales/snapshots up to that month. */
 export function computeCryptoValueAtMonth(
   usdwPurchases: UsdwPurchase[],
   btcPurchases: BtcPurchase[],
   snapshots: CryptoSnapshot[],
   monthAbs: number,
-  solPurchases: SolPurchase[] = []
+  solPurchases: SolPurchase[] = [],
+  btcSales: BtcSale[] = [],
+  solSales: SolSale[] = []
 ): { invested: number; value: number; usdwValue: number; btcValue: number; solValue: number } {
-  const relevantUsdw = usdwPurchases.filter(p => {
-    const d = new Date(p.date);
-    return d.getUTCFullYear() * 12 + d.getUTCMonth() <= monthAbs;
-  });
-  const relevantBtc = btcPurchases.filter(p => {
-    const d = new Date(p.date);
-    return d.getUTCFullYear() * 12 + d.getUTCMonth() <= monthAbs;
-  });
-  const relevantSol = solPurchases.filter(p => {
-    const d = new Date(p.date);
-    return d.getUTCFullYear() * 12 + d.getUTCMonth() <= monthAbs;
-  });
+  const withinMonth = (d: string) => {
+    const dt = new Date(d);
+    return dt.getUTCFullYear() * 12 + dt.getUTCMonth() <= monthAbs;
+  };
+  const relevantUsdw = usdwPurchases.filter(p => withinMonth(p.date));
+  const relevantBtc = btcPurchases.filter(p => withinMonth(p.date));
+  const relevantSol = solPurchases.filter(p => withinMonth(p.date));
+  const relevantBtcSales = btcSales.filter(s => withinMonth(s.date));
+  const relevantSolSales = solSales.filter(s => withinMonth(s.date));
 
   const invested = relevantUsdw.reduce((s, p) => s + p.copAmount, 0);
-  const btcHeld = relevantBtc.reduce((s, p) => s + p.btcAmount, 0);
-  const solHeld = relevantSol.reduce((s, p) => s + p.solAmount, 0);
-  const relevantSpends = [
-    ...relevantBtc.map(p => ({ date: p.date, usdwAmount: p.usdwAmount, kind: "btc" })),
-    ...relevantSol.map(p => ({ date: p.date, usdwAmount: p.usdwAmount, kind: "sol" })),
-  ];
-  const { usdwHeldDerived, usdwCostBasisCop, costBasisByKind } = fifoUsdwLots(relevantUsdw, relevantSpends);
-  const avgHeldRate = usdwHeldDerived > 0 ? usdwCostBasisCop / usdwHeldDerived : 0;
 
   const relevantSnaps = snapshots
     .filter(s => s.year * 12 + (s.month - 1) <= monthAbs)
     .sort(compareSnapshots);
   const latest = relevantSnaps.at(-1) ?? null;
+
+  const btcSaleReceipts = relevantBtcSales.map(s => ({ date: s.date, usdwAmount: s.usdwReceived, copValue: s.usdwReceived * usdCopRateAt(relevantSnaps, new Date(s.date).getTime()) }));
+  const solSaleReceipts = relevantSolSales.map(s => ({ date: s.date, usdwAmount: s.usdwReceived, copValue: s.usdwReceived * usdCopRateAt(relevantSnaps, new Date(s.date).getTime()) }));
+  const relevantSpends = [
+    ...relevantBtc.map(p => ({ id: p.id, date: p.date, usdwAmount: p.usdwAmount, kind: "btc" })),
+    ...relevantSol.map(p => ({ id: p.id, date: p.date, usdwAmount: p.usdwAmount, kind: "sol" })),
+  ];
+  const { usdwHeldDerived, usdwCostBasisCop, costByEventId } = fifoUsdwLots(
+    relevantUsdw, relevantSpends, [...btcSaleReceipts, ...solSaleReceipts]
+  );
+  const avgHeldRate = usdwHeldDerived > 0 ? usdwCostBasisCop / usdwHeldDerived : 0;
+
+  const btcFifo = fifoAssetLots(
+    relevantBtc.map(p => ({ date: p.date, amount: p.btcAmount, usdwCost: p.usdwAmount, copCost: costByEventId[p.id] ?? 0 })),
+    relevantBtcSales.map(s => ({ date: s.date, amount: s.btcAmount, usdwReceived: s.usdwReceived, copReceived: s.usdwReceived * usdCopRateAt(relevantSnaps, new Date(s.date).getTime()) }))
+  );
+  const solFifo = fifoAssetLots(
+    relevantSol.map(p => ({ date: p.date, amount: p.solAmount, usdwCost: p.usdwAmount, copCost: costByEventId[p.id] ?? 0 })),
+    relevantSolSales.map(s => ({ date: s.date, amount: s.solAmount, usdwReceived: s.usdwReceived, copReceived: s.usdwReceived * usdCopRateAt(relevantSnaps, new Date(s.date).getTime()) }))
+  );
+
+  const usdwDeltas = [
+    ...relevantUsdw.map(p => ({ date: p.date, usdwDelta: p.usdwAmount })),
+    ...relevantBtc.map(p => ({ date: p.date, usdwDelta: -p.usdwAmount })),
+    ...relevantSol.map(p => ({ date: p.date, usdwDelta: -p.usdwAmount })),
+    ...relevantBtcSales.map(s => ({ date: s.date, usdwDelta: s.usdwReceived })),
+    ...relevantSolSales.map(s => ({ date: s.date, usdwDelta: s.usdwReceived })),
+  ];
   const usdwHeld = latest?.usdwBalance != null
     ? rollForwardUsdwBalance(
         latest.usdwBalance,
         new Date(latest.year, latest.month - 1, latest.day).getTime(),
-        relevantUsdw,
-        relevantSpends
+        usdwDeltas
       )
     : usdwHeldDerived;
 
   const usdwValue = latest ? usdwHeld * latest.usdCopRate : usdwHeld * avgHeldRate;
-  const btcValue = latest ? btcHeld * latest.btcPriceUsd * latest.usdCopRate : (costBasisByKind.btc ?? 0);
+  const btcValue = latest && latest.btcPriceUsd > 0
+    ? btcFifo.heldAmount * latest.btcPriceUsd * latest.usdCopRate
+    : btcFifo.costBasisCopHeld;
   // Same "0 means not set" fallback as solPriceUsdNow above.
   const solValue = latest && latest.solPriceUsd > 0
-    ? solHeld * latest.solPriceUsd * latest.usdCopRate
-    : (costBasisByKind.sol ?? 0);
+    ? solFifo.heldAmount * latest.solPriceUsd * latest.usdCopRate
+    : solFifo.costBasisCopHeld;
   return { invested, value: usdwValue + btcValue + solValue, usdwValue, btcValue, solValue };
 }
 
@@ -342,6 +472,8 @@ export default function CryptoTab() {
   const { data: usdwPurchases = [] } = useUsdwPurchases();
   const { data: btcPurchases = [] } = useBtcPurchases();
   const { data: solPurchases = [] } = useSolPurchases();
+  const { data: btcSales = [] } = useBtcSales();
+  const { data: solSales = [] } = useSolSales();
   const { data: snapshots = [] } = useCryptoSnapshots();
   const { data: settings } = useCryptoSettings();
 
@@ -351,14 +483,20 @@ export default function CryptoTab() {
   const deleteBtcMut = useDeleteBtcPurchase();
   const addSolMut = useAddSolPurchase();
   const deleteSolMut = useDeleteSolPurchase();
+  const addBtcSaleMut = useAddBtcSale();
+  const deleteBtcSaleMut = useDeleteBtcSale();
+  const addSolSaleMut = useAddSolSale();
+  const deleteSolSaleMut = useDeleteSolSale();
   const upsertSnapMut = useUpsertCryptoSnapshot();
   const deleteSnapMut = useDeleteCryptoSnapshot();
   const updateSellCommMut = useUpdateCryptoSellCommission();
   const updateRateMut = useUpdateCryptoCommissionRate();
+  const updateBtcTargetMut = useUpdateBtcTargetGrowthPct();
+  const updateSolTargetMut = useUpdateSolTargetGrowthPct();
 
   const summary = useMemo(
-    () => computeSummary(usdwPurchases, btcPurchases, snapshots, solPurchases),
-    [usdwPurchases, btcPurchases, snapshots, solPurchases]
+    () => computeSummary(usdwPurchases, btcPurchases, snapshots, solPurchases, btcSales, solSales),
+    [usdwPurchases, btcPurchases, snapshots, solPurchases, btcSales, solSales]
   );
 
   const commissionRate = settings?.commissionRate ?? 0.001;
@@ -379,6 +517,8 @@ export default function CryptoTab() {
   const [showUsdwForm, setShowUsdwForm] = useState(false);
   const [showBtcForm, setShowBtcForm] = useState(false);
   const [showSolForm, setShowSolForm] = useState(false);
+  const [showBtcSaleForm, setShowBtcSaleForm] = useState(false);
+  const [showSolSaleForm, setShowSolSaleForm] = useState(false);
   const [showSnapForm, setShowSnapForm] = useState(false);
 
   return (
@@ -462,11 +602,10 @@ export default function CryptoTab() {
           <StatRow label={t("crypto.valueInCop")} value={<Money amount={summary.btcValueCop} />} valueColor="#059669" />
 
           <SectionLabel>{t("crypto.performance")}</SectionLabel>
-          <StatRow
-            label={t("crypto.growthSincePurchase")}
-            value={summary.btcCostUsdw > 0 ? `${summary.btcGrowthPct >= 0 ? "+" : ""}${summary.btcGrowthPct.toFixed(2)}%` : "—"}
-            valueColor={summary.btcGrowthPct >= 0 ? "#059669" : "#dc2626"}
-          />
+          <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", fontSize: 13, alignItems: "center" }}>
+            <span style={{ color: "#6b7280" }}>{t("crypto.growthSincePurchase")}</span>
+            <GrowthWithTarget pct={summary.btcGrowthPct} hasData={summary.btcCostUsdw > 0} target={settings?.btcTargetGrowthPct ?? null} />
+          </div>
           <StatRow
             label={t("crypto.gainLossUsd")}
             value={summary.btcCostUsdw > 0
@@ -481,6 +620,26 @@ export default function CryptoTab() {
               : "—"}
             valueColor={summary.btcGainCop >= 0 ? "#059669" : "#dc2626"}
           />
+          <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", fontSize: 13, alignItems: "center" }}>
+            <span style={{ color: "#6b7280" }}>{t("crypto.targetGrowthLabel")}</span>
+            <TargetPercentEditableCell value={settings?.btcTargetGrowthPct ?? null} onChange={v => updateBtcTargetMut.mutate(v)} />
+          </div>
+
+          <SectionLabel>{t("crypto.realizedTitle")}</SectionLabel>
+          <StatRow
+            label={t("crypto.realizedGainUsd")}
+            value={btcSales.length > 0
+              ? <>{summary.btcRealizedGainUsdw >= 0 ? "+" : ""}<Money amount={summary.btcRealizedGainUsdw} currency="USDW" /></>
+              : "—"}
+            valueColor={summary.btcRealizedGainUsdw >= 0 ? "#059669" : "#dc2626"}
+          />
+          <StatRow
+            label={t("crypto.realizedGainCop")}
+            value={btcSales.length > 0
+              ? <>{summary.btcRealizedGainCop >= 0 ? "+" : ""}<Money amount={summary.btcRealizedGainCop} /></>
+              : "—"}
+            valueColor={summary.btcRealizedGainCop >= 0 ? "#059669" : "#dc2626"}
+          />
         </div>
         <div style={card}>
           <div style={{ fontSize: 13, fontWeight: 700, color: "#374151", marginBottom: 12 }}>{t("crypto.solTitle")}</div>
@@ -493,11 +652,10 @@ export default function CryptoTab() {
           <StatRow label={t("crypto.valueInCop")} value={<Money amount={summary.solValueCop} />} valueColor="#059669" />
 
           <SectionLabel>{t("crypto.performance")}</SectionLabel>
-          <StatRow
-            label={t("crypto.growthSincePurchase")}
-            value={summary.solCostUsdw > 0 ? `${summary.solGrowthPct >= 0 ? "+" : ""}${summary.solGrowthPct.toFixed(2)}%` : "—"}
-            valueColor={summary.solGrowthPct >= 0 ? "#059669" : "#dc2626"}
-          />
+          <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", fontSize: 13, alignItems: "center" }}>
+            <span style={{ color: "#6b7280" }}>{t("crypto.growthSincePurchase")}</span>
+            <GrowthWithTarget pct={summary.solGrowthPct} hasData={summary.solCostUsdw > 0} target={settings?.solTargetGrowthPct ?? null} />
+          </div>
           <StatRow
             label={t("crypto.gainLossUsd")}
             value={summary.solCostUsdw > 0
@@ -511,6 +669,26 @@ export default function CryptoTab() {
               ? <>{summary.solGainCop >= 0 ? "+" : ""}<Money amount={summary.solGainCop} /></>
               : "—"}
             valueColor={summary.solGainCop >= 0 ? "#059669" : "#dc2626"}
+          />
+          <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", fontSize: 13, alignItems: "center" }}>
+            <span style={{ color: "#6b7280" }}>{t("crypto.targetGrowthLabel")}</span>
+            <TargetPercentEditableCell value={settings?.solTargetGrowthPct ?? null} onChange={v => updateSolTargetMut.mutate(v)} />
+          </div>
+
+          <SectionLabel>{t("crypto.realizedTitle")}</SectionLabel>
+          <StatRow
+            label={t("crypto.realizedGainUsd")}
+            value={solSales.length > 0
+              ? <>{summary.solRealizedGainUsdw >= 0 ? "+" : ""}<Money amount={summary.solRealizedGainUsdw} currency="USDW" /></>
+              : "—"}
+            valueColor={summary.solRealizedGainUsdw >= 0 ? "#059669" : "#dc2626"}
+          />
+          <StatRow
+            label={t("crypto.realizedGainCop")}
+            value={solSales.length > 0
+              ? <>{summary.solRealizedGainCop >= 0 ? "+" : ""}<Money amount={summary.solRealizedGainCop} /></>
+              : "—"}
+            valueColor={summary.solRealizedGainCop >= 0 ? "#059669" : "#dc2626"}
           />
         </div>
       </div>
@@ -672,8 +850,57 @@ export default function CryptoTab() {
         )}
       </div>
 
+      {/* BTC sales */}
+      <div style={{ ...card, marginBottom: 16 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: showBtcSaleForm ? 12 : 0 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "#374151" }}>{t("crypto.btcSalesTitle")}</div>
+          {!showBtcSaleForm && <button onClick={() => setShowBtcSaleForm(true)} style={btn("#dc2626")}>{t("crypto.addSale")}</button>}
+        </div>
+        {showBtcSaleForm && (
+          <BtcSaleForm
+            onSave={data => { addBtcSaleMut.mutate(data); setShowBtcSaleForm(false); }}
+            onCancel={() => setShowBtcSaleForm(false)}
+            loading={addBtcSaleMut.isPending}
+            availableBtc={summary.btcHeld}
+          />
+        )}
+        {btcSales.length === 0 ? (
+          <div style={{ padding: "12px 0", color: "#9ca3af", fontSize: 12 }}>{t("crypto.noEntries")}</div>
+        ) : (
+          <div style={{ marginTop: 12, overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+              <thead>
+                <tr>
+                  {[t("crypto.colDate"), t("crypto.colBtcSold"), t("crypto.colCommission"), t("crypto.btcPrice"), t("crypto.colUsdwReceivedShort"), t("crypto.colNotes"), ""].map(h => (
+                    <th key={h} style={{ padding: "6px 10px", textAlign: "left", fontSize: 11, color: "#9ca3af", fontWeight: 600 }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {[...btcSales].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(s => (
+                  <tr key={s.id} style={{ borderTop: "1px solid #e5e7eb" }}>
+                    <td style={{ padding: "7px 10px" }}>{fmtDate(s.date)}</td>
+                    <td style={{ padding: "7px 10px" }}>{<Money amount={s.btcAmount} currency="BTC" />}</td>
+                    <td style={{ padding: "7px 10px", color: "#6b7280" }}>{<Money amount={s.commissionUsdw} currency="USDW" />}</td>
+                    <td style={{ padding: "7px 10px", color: "#6b7280" }}>{<Money amount={s.btcPriceUsdw} currency="USDW" />}</td>
+                    <td style={{ padding: "7px 10px", fontWeight: 600 }}>{<Money amount={s.usdwReceived} currency="USDW" />}</td>
+                    <td style={{ padding: "7px 10px", color: "#6b7280" }}>{s.notes || "—"}</td>
+                    <td style={{ padding: "7px 10px", textAlign: "right" }}>
+                      <button
+                        onClick={() => deleteBtcSaleMut.mutate(s.id)}
+                        style={{ background: "none", border: "none", cursor: "pointer", color: "#d1d5db", fontSize: 11 }}
+                      >✕</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
       {/* SOL purchases */}
-      <div style={card}>
+      <div style={{ ...card, marginBottom: 16 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: showSolForm ? 12 : 0 }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: "#374151" }}>{t("crypto.solExchangesTitle")}</div>
           {!showSolForm && <button onClick={() => setShowSolForm(true)} style={btn()}>{t("crypto.addExchange")}</button>}
@@ -711,6 +938,55 @@ export default function CryptoTab() {
                     <td style={{ padding: "7px 10px", textAlign: "right" }}>
                       <button
                         onClick={() => deleteSolMut.mutate(p.id)}
+                        style={{ background: "none", border: "none", cursor: "pointer", color: "#d1d5db", fontSize: 11 }}
+                      >✕</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* SOL sales */}
+      <div style={card}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: showSolSaleForm ? 12 : 0 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "#374151" }}>{t("crypto.solSalesTitle")}</div>
+          {!showSolSaleForm && <button onClick={() => setShowSolSaleForm(true)} style={btn("#dc2626")}>{t("crypto.addSale")}</button>}
+        </div>
+        {showSolSaleForm && (
+          <SolSaleForm
+            onSave={data => { addSolSaleMut.mutate(data); setShowSolSaleForm(false); }}
+            onCancel={() => setShowSolSaleForm(false)}
+            loading={addSolSaleMut.isPending}
+            availableSol={summary.solHeld}
+          />
+        )}
+        {solSales.length === 0 ? (
+          <div style={{ padding: "12px 0", color: "#9ca3af", fontSize: 12 }}>{t("crypto.noEntries")}</div>
+        ) : (
+          <div style={{ marginTop: 12, overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+              <thead>
+                <tr>
+                  {[t("crypto.colDate"), t("crypto.colSolSold"), t("crypto.colCommission"), t("crypto.solPrice"), t("crypto.colUsdwReceivedShort"), t("crypto.colNotes"), ""].map(h => (
+                    <th key={h} style={{ padding: "6px 10px", textAlign: "left", fontSize: 11, color: "#9ca3af", fontWeight: 600 }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {[...solSales].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(s => (
+                  <tr key={s.id} style={{ borderTop: "1px solid #e5e7eb" }}>
+                    <td style={{ padding: "7px 10px" }}>{fmtDate(s.date)}</td>
+                    <td style={{ padding: "7px 10px" }}>{<Money amount={s.solAmount} currency="SOL" />}</td>
+                    <td style={{ padding: "7px 10px", color: "#6b7280" }}>{<Money amount={s.commissionUsdw} currency="USDW" />}</td>
+                    <td style={{ padding: "7px 10px", color: "#6b7280" }}>{<Money amount={s.solPriceUsdw} currency="USDW" />}</td>
+                    <td style={{ padding: "7px 10px", fontWeight: 600 }}>{<Money amount={s.usdwReceived} currency="USDW" />}</td>
+                    <td style={{ padding: "7px 10px", color: "#6b7280" }}>{s.notes || "—"}</td>
+                    <td style={{ padding: "7px 10px", textAlign: "right" }}>
+                      <button
+                        onClick={() => deleteSolSaleMut.mutate(s.id)}
                         style={{ background: "none", border: "none", cursor: "pointer", color: "#d1d5db", fontSize: 11 }}
                       >✕</button>
                     </td>
@@ -790,6 +1066,87 @@ function PercentEditableCell({ value, onChange }: { value: number; onChange: (v:
       }}
     >
       {(value * 100).toFixed(2)}%
+    </span>
+  );
+}
+
+/** Growth-since-purchase display that highlights (green badge) once it reaches a user-set
+ * target % — the "sell when I'm up 10%" signal, surfaced right where you'd check your position
+ * instead of needing a push notification. */
+function GrowthWithTarget({ pct, hasData, target }: { pct: number; hasData: boolean; target: number | null }) {
+  const { t } = useTranslation();
+  if (!hasData) return <span style={{ fontWeight: 600, color: "#1f2937" }}>—</span>;
+  const metTarget = target != null && target > 0 && pct >= target;
+  if (metTarget) {
+    return (
+      <span
+        title={t("crypto.targetReachedTooltip", { pct: target.toFixed(2) })}
+        style={{
+          fontWeight: 700, fontSize: 13, padding: "2px 10px", borderRadius: 99,
+          background: "#dcfce7", color: "#15803d", border: "1px solid #86efac",
+        }}
+      >
+        🎯 +{pct.toFixed(2)}%
+      </span>
+    );
+  }
+  return (
+    <span style={{ fontWeight: 600, color: pct >= 0 ? "#059669" : "#dc2626" }}>
+      {pct >= 0 ? "+" : ""}{pct.toFixed(2)}%
+    </span>
+  );
+}
+
+/** Click-to-edit target growth % (plain percent, e.g. 10 = 10%). Empty/zero clears the target. */
+function TargetPercentEditableCell({ value, onChange }: { value: number | null; onChange: (v: number | null) => void }) {
+  const { t } = useTranslation();
+  const [editing, setEditing] = useState(false);
+  const [text, setText] = useState("");
+
+  function start() {
+    setText(value != null ? String(value) : "");
+    setEditing(true);
+  }
+
+  function done() {
+    const trimmed = text.trim();
+    if (trimmed === "") {
+      onChange(null);
+    } else {
+      const pct = Number(trimmed.replace(",", "."));
+      onChange(!isNaN(pct) && pct > 0 ? pct : null);
+    }
+    setEditing(false);
+  }
+
+  if (editing) {
+    return (
+      <input
+        autoFocus
+        value={text}
+        placeholder={t("crypto.placeholderTargetPct")}
+        onChange={e => setText(e.target.value)}
+        onBlur={done}
+        onKeyDown={e => { if (e.key === "Enter") done(); if (e.key === "Escape") setEditing(false); }}
+        style={{ width: 70, padding: "3px 6px", borderRadius: 6, border: "2px solid #6366f1", fontSize: 12, textAlign: "right", outline: "none" }}
+      />
+    );
+  }
+
+  return (
+    <span
+      onClick={start}
+      title={t("crypto.clickToEdit")}
+      style={{
+        cursor: "text", padding: "3px 8px", borderRadius: 6,
+        background: value != null ? "#ede9fe" : "#f9fafb",
+        color: value != null ? "#4f46e5" : "#9ca3af",
+        fontWeight: value != null ? 700 : 400, fontSize: 12,
+        display: "inline-block", minWidth: 50, textAlign: "right",
+        border: "1px dashed", borderColor: value != null ? "#a5b4fc" : "#e5e7eb",
+      }}
+    >
+      {value != null ? `+${value.toFixed(2)}%` : "—"}
     </span>
   );
 }
@@ -1106,6 +1463,233 @@ function SolPurchaseForm({ onSave, onCancel, loading, commissionRate, availableU
           onClick={handleSubmit}
           style={{ ...btn(), opacity: usdwExceedsAvailable ? 0.5 : 1, cursor: usdwExceedsAvailable ? "not-allowed" : "pointer" }}
           disabled={loading || usdwExceedsAvailable}
+        >{loading ? t("crypto.saving") : t("crypto.save")}</button>
+        <button onClick={onCancel} style={ghost}>{t("crypto.cancel")}</button>
+      </div>
+    </div>
+  );
+}
+
+function BtcSaleForm({ onSave, onCancel, loading, availableBtc }: {
+  onSave: (data: { date: string; btcAmount: number; commissionUsdw: number; btcPriceUsdw: number; usdwReceived: number; notes?: string }) => void;
+  onCancel: () => void;
+  loading: boolean;
+  availableBtc: number;
+}) {
+  const { t } = useTranslation();
+  const [date, setDate] = useState(todayInput());
+  const [btcAmount, setBtcAmount] = useState("");
+  const [commissionUsdw, setCommissionUsdw] = useState("0");
+  const [btcPriceUsdw, setBtcPriceUsdw] = useState("");
+  const [usdwReceived, setUsdwReceived] = useState("");
+  // Tracks which of price/received the user is driving, so the other one is the derived field.
+  const [lastEdited, setLastEdited] = useState<"price" | "received" | null>(null);
+
+  function grossUsdw(amountStr: string, priceStr: string): number {
+    return (Number(amountStr) || 0) * (Number(priceStr) || 0);
+  }
+
+  function handleAmountChange(raw: string) {
+    setBtcAmount(raw);
+    const comm = Number(commissionUsdw) || 0;
+    if (lastEdited === "price") {
+      const gross = grossUsdw(raw, btcPriceUsdw);
+      if (gross > 0) setUsdwReceived(Math.max(gross - comm, 0).toFixed(2));
+    } else if (lastEdited === "received") {
+      const amt = Number(raw);
+      const received = Number(usdwReceived);
+      if (amt > 0 && received > 0) setBtcPriceUsdw(((received + comm) / amt).toFixed(2));
+    }
+  }
+
+  function handleCommissionChange(raw: string) {
+    setCommissionUsdw(raw);
+    const comm = Number(raw) || 0;
+    if (lastEdited === "price") {
+      const gross = grossUsdw(btcAmount, btcPriceUsdw);
+      if (gross > 0) setUsdwReceived(Math.max(gross - comm, 0).toFixed(2));
+    } else if (lastEdited === "received") {
+      const amt = Number(btcAmount);
+      const received = Number(usdwReceived);
+      if (amt > 0 && received > 0) setBtcPriceUsdw(((received + comm) / amt).toFixed(2));
+    }
+  }
+
+  function handlePriceChange(raw: string) {
+    setBtcPriceUsdw(raw);
+    setLastEdited("price");
+    const comm = Number(commissionUsdw) || 0;
+    const gross = grossUsdw(btcAmount, raw);
+    if (gross > 0) setUsdwReceived(Math.max(gross - comm, 0).toFixed(2));
+  }
+
+  function handleReceivedChange(raw: string) {
+    setUsdwReceived(raw);
+    setLastEdited("received");
+    const amt = Number(btcAmount);
+    const comm = Number(commissionUsdw) || 0;
+    const received = Number(raw);
+    if (amt > 0 && received > 0) setBtcPriceUsdw(((received + comm) / amt).toFixed(2));
+  }
+
+  const btcExceedsAvailable = Number(btcAmount) > availableBtc;
+
+  function handleSubmit() {
+    const amt = Number(btcAmount);
+    const comm = Number(commissionUsdw) || 0;
+    const price = Number(btcPriceUsdw);
+    const received = Number(usdwReceived);
+    if (!date || !amt || !price || !received || btcExceedsAvailable) return;
+    onSave({ date, btcAmount: amt, commissionUsdw: comm, btcPriceUsdw: price, usdwReceived: received });
+  }
+
+  return (
+    <div style={{ borderTop: "1px solid #e5e7eb", paddingTop: 12 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr 1fr", gap: 12, marginBottom: 12 }}>
+        <div>
+          <span style={label}>{t("crypto.colDate")}</span>
+          <input style={input} type="date" value={date} onChange={e => setDate(e.target.value)} />
+        </div>
+        <div>
+          <span style={label}>{t("crypto.btcAmountToSellLabel")} <span style={{ color: "#9ca3af" }}>{t("crypto.availableLabel")} {<Money amount={availableBtc} currency="BTC" />}</span></span>
+          <input style={input} type="number" step="any" placeholder={t("crypto.placeholderBtcReceived")} value={btcAmount} onChange={e => handleAmountChange(e.target.value)} />
+        </div>
+        <div>
+          <span style={label}>{t("crypto.commissionUsdwLabel")}</span>
+          <input style={input} type="number" step="any" placeholder={t("crypto.placeholderZero")} value={commissionUsdw} onChange={e => handleCommissionChange(e.target.value)} />
+        </div>
+        <div>
+          <span style={label}>{t("crypto.btcPriceUsdwLabel")}</span>
+          <input style={input} type="number" step="any" placeholder={t("crypto.placeholderBtcPrice")} value={btcPriceUsdw} onChange={e => handlePriceChange(e.target.value)} />
+        </div>
+        <div>
+          <span style={label}>{t("crypto.usdwReceivedLabel")}</span>
+          <input style={input} type="number" step="any" placeholder={t("crypto.placeholderUsdwAmount")} value={usdwReceived} onChange={e => handleReceivedChange(e.target.value)} />
+        </div>
+      </div>
+      {btcExceedsAvailable && (
+        <div style={{ fontSize: 12, color: "#dc2626", marginBottom: 12 }}>
+          {t("crypto.onlyAvailablePrefix")} {<Money amount={availableBtc} currency="BTC" />} {t("crypto.onlyAvailableSuffix")}
+        </div>
+      )}
+      <div style={{ display: "flex", gap: 8 }}>
+        <button
+          onClick={handleSubmit}
+          style={{ ...btn("#dc2626"), opacity: btcExceedsAvailable ? 0.5 : 1, cursor: btcExceedsAvailable ? "not-allowed" : "pointer" }}
+          disabled={loading || btcExceedsAvailable}
+        >{loading ? t("crypto.saving") : t("crypto.save")}</button>
+        <button onClick={onCancel} style={ghost}>{t("crypto.cancel")}</button>
+      </div>
+    </div>
+  );
+}
+
+function SolSaleForm({ onSave, onCancel, loading, availableSol }: {
+  onSave: (data: { date: string; solAmount: number; commissionUsdw: number; solPriceUsdw: number; usdwReceived: number; notes?: string }) => void;
+  onCancel: () => void;
+  loading: boolean;
+  availableSol: number;
+}) {
+  const { t } = useTranslation();
+  const [date, setDate] = useState(todayInput());
+  const [solAmount, setSolAmount] = useState("");
+  const [commissionUsdw, setCommissionUsdw] = useState("0");
+  const [solPriceUsdw, setSolPriceUsdw] = useState("");
+  const [usdwReceived, setUsdwReceived] = useState("");
+  const [lastEdited, setLastEdited] = useState<"price" | "received" | null>(null);
+
+  function grossUsdw(amountStr: string, priceStr: string): number {
+    return (Number(amountStr) || 0) * (Number(priceStr) || 0);
+  }
+
+  function handleAmountChange(raw: string) {
+    setSolAmount(raw);
+    const comm = Number(commissionUsdw) || 0;
+    if (lastEdited === "price") {
+      const gross = grossUsdw(raw, solPriceUsdw);
+      if (gross > 0) setUsdwReceived(Math.max(gross - comm, 0).toFixed(2));
+    } else if (lastEdited === "received") {
+      const amt = Number(raw);
+      const received = Number(usdwReceived);
+      if (amt > 0 && received > 0) setSolPriceUsdw(((received + comm) / amt).toFixed(2));
+    }
+  }
+
+  function handleCommissionChange(raw: string) {
+    setCommissionUsdw(raw);
+    const comm = Number(raw) || 0;
+    if (lastEdited === "price") {
+      const gross = grossUsdw(solAmount, solPriceUsdw);
+      if (gross > 0) setUsdwReceived(Math.max(gross - comm, 0).toFixed(2));
+    } else if (lastEdited === "received") {
+      const amt = Number(solAmount);
+      const received = Number(usdwReceived);
+      if (amt > 0 && received > 0) setSolPriceUsdw(((received + comm) / amt).toFixed(2));
+    }
+  }
+
+  function handlePriceChange(raw: string) {
+    setSolPriceUsdw(raw);
+    setLastEdited("price");
+    const comm = Number(commissionUsdw) || 0;
+    const gross = grossUsdw(solAmount, raw);
+    if (gross > 0) setUsdwReceived(Math.max(gross - comm, 0).toFixed(2));
+  }
+
+  function handleReceivedChange(raw: string) {
+    setUsdwReceived(raw);
+    setLastEdited("received");
+    const amt = Number(solAmount);
+    const comm = Number(commissionUsdw) || 0;
+    const received = Number(raw);
+    if (amt > 0 && received > 0) setSolPriceUsdw(((received + comm) / amt).toFixed(2));
+  }
+
+  const solExceedsAvailable = Number(solAmount) > availableSol;
+
+  function handleSubmit() {
+    const amt = Number(solAmount);
+    const comm = Number(commissionUsdw) || 0;
+    const price = Number(solPriceUsdw);
+    const received = Number(usdwReceived);
+    if (!date || !amt || !price || !received || solExceedsAvailable) return;
+    onSave({ date, solAmount: amt, commissionUsdw: comm, solPriceUsdw: price, usdwReceived: received });
+  }
+
+  return (
+    <div style={{ borderTop: "1px solid #e5e7eb", paddingTop: 12 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr 1fr", gap: 12, marginBottom: 12 }}>
+        <div>
+          <span style={label}>{t("crypto.colDate")}</span>
+          <input style={input} type="date" value={date} onChange={e => setDate(e.target.value)} />
+        </div>
+        <div>
+          <span style={label}>{t("crypto.solAmountToSellLabel")} <span style={{ color: "#9ca3af" }}>{t("crypto.availableLabel")} {<Money amount={availableSol} currency="SOL" />}</span></span>
+          <input style={input} type="number" step="any" placeholder={t("crypto.placeholderSolReceived")} value={solAmount} onChange={e => handleAmountChange(e.target.value)} />
+        </div>
+        <div>
+          <span style={label}>{t("crypto.commissionUsdwLabel")}</span>
+          <input style={input} type="number" step="any" placeholder={t("crypto.placeholderZero")} value={commissionUsdw} onChange={e => handleCommissionChange(e.target.value)} />
+        </div>
+        <div>
+          <span style={label}>{t("crypto.solPriceUsdwLabel")}</span>
+          <input style={input} type="number" step="any" placeholder={t("crypto.placeholderSolPrice")} value={solPriceUsdw} onChange={e => handlePriceChange(e.target.value)} />
+        </div>
+        <div>
+          <span style={label}>{t("crypto.usdwReceivedLabel")}</span>
+          <input style={input} type="number" step="any" placeholder={t("crypto.placeholderUsdwAmount")} value={usdwReceived} onChange={e => handleReceivedChange(e.target.value)} />
+        </div>
+      </div>
+      {solExceedsAvailable && (
+        <div style={{ fontSize: 12, color: "#dc2626", marginBottom: 12 }}>
+          {t("crypto.onlyAvailablePrefix")} {<Money amount={availableSol} currency="SOL" />} {t("crypto.onlyAvailableSuffix")}
+        </div>
+      )}
+      <div style={{ display: "flex", gap: 8 }}>
+        <button
+          onClick={handleSubmit}
+          style={{ ...btn("#dc2626"), opacity: solExceedsAvailable ? 0.5 : 1, cursor: solExceedsAvailable ? "not-allowed" : "pointer" }}
+          disabled={loading || solExceedsAvailable}
         >{loading ? t("crypto.saving") : t("crypto.save")}</button>
         <button onClick={onCancel} style={ghost}>{t("crypto.cancel")}</button>
       </div>

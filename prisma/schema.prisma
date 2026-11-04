@@ -13,6 +13,8 @@ model User {
   createdAt           DateTime             @default(now())
   cryptoSellCommission Float               @default(0)
   cryptoCommissionRate Float               @default(0.001)
+  btcTargetGrowthPct  Float?
+  solTargetGrowthPct  Float?
   categories          Category[]
   expenseItems        ExpenseItem[]
   expenseRecords      ExpenseRecord[]
@@ -31,6 +33,8 @@ model User {
   usdwPurchases          UsdwPurchase[]
   btcPurchases           BtcPurchase[]
   solPurchases           SolPurchase[]
+  btcSales               BtcSale[]
+  solSales               SolSale[]
   cryptoSnapshots        CryptoSnapshot[]
   mortgages              Mortgage[]
   mortgagePayments       MortgagePayment[]
@@ -300,6 +304,32 @@ model SolPurchase {
   commissionUsdw Float    @default(0)
   solPriceUsdw   Float    // price of 1 SOL in USDW at the time of this exchange
   solAmount      Float    // SOL actually received
+  notes          String   @default("")
+  createdAt      DateTime @default(now())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model BtcSale {
+  id             String   @id @default(uuid())
+  date           DateTime
+  btcAmount      Float    // BTC sold
+  commissionUsdw Float    @default(0)
+  btcPriceUsdw   Float    // price of 1 BTC in USDW at the time of this sale
+  usdwReceived   Float    // USDW actually received (net of commission), re-enters the USDW pool
+  notes          String   @default("")
+  createdAt      DateTime @default(now())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model SolSale {
+  id             String   @id @default(uuid())
+  date           DateTime
+  solAmount      Float    // SOL sold
+  commissionUsdw Float    @default(0)
+  solPriceUsdw   Float    // price of 1 SOL in USDW at the time of this sale
+  usdwReceived   Float    // USDW actually received (net of commission), re-enters the USDW pool
   notes          String   @default("")
   createdAt      DateTime @default(now())
   userId         String

@@ -17,6 +17,8 @@ import {
   useUsdwPurchases,
   useBtcPurchases,
   useSolPurchases,
+  useBtcSales,
+  useSolSales,
   useCryptoSnapshots,
   useCryptoSettings,
   type FixedDepositGroup,
@@ -260,6 +262,8 @@ function SummaryContent({
   const { data: usdwPurchases = [] } = useUsdwPurchases();
   const { data: btcPurchases = [] } = useBtcPurchases();
   const { data: solPurchases = [] } = useSolPurchases();
+  const { data: btcSales = [] } = useBtcSales();
+  const { data: solSales = [] } = useSolSales();
   const { data: cryptoSnapshots = [] } = useCryptoSnapshots();
   const { data: cryptoSettings } = useCryptoSettings();
 
@@ -321,8 +325,8 @@ function SummaryContent({
     }), [funds]);
 
   const cryptoSummary = useMemo(
-    () => computeCryptoSummary(usdwPurchases, btcPurchases, cryptoSnapshots, solPurchases),
-    [usdwPurchases, btcPurchases, cryptoSnapshots, solPurchases]
+    () => computeCryptoSummary(usdwPurchases, btcPurchases, cryptoSnapshots, solPurchases, btcSales, solSales),
+    [usdwPurchases, btcPurchases, cryptoSnapshots, solPurchases, btcSales, solSales]
   );
 
   const cryptoItems = useMemo((): CategoryItem[] => {
@@ -539,7 +543,7 @@ function SummaryContent({
       // Crypto (USDW + BTC + SOL): only from the month of the first purchase onward
       if (usdwPurchases.length > 0 || btcPurchases.length > 0 || solPurchases.length > 0) {
         const { invested: cryptoInvested, value: cryptoVal, usdwValue, btcValue, solValue } =
-          computeCryptoValueAtMonth(usdwPurchases, btcPurchases, cryptoSnapshots, i, solPurchases);
+          computeCryptoValueAtMonth(usdwPurchases, btcPurchases, cryptoSnapshots, i, solPurchases, btcSales, solSales);
         if (cryptoInvested > 0 || cryptoVal > 0) {
           ti += cryptoInvested;
           tv += cryptoVal;
@@ -559,7 +563,7 @@ function SummaryContent({
       data.push(row);
     }
     return data;
-  }, [invs, chartFrom, chartTo, txByInv, priceSnapByInv, funds, depositGroups, usdwPurchases, btcPurchases, solPurchases, cryptoSnapshots]);
+  }, [invs, chartFrom, chartTo, txByInv, priceSnapByInv, funds, depositGroups, usdwPurchases, btcPurchases, solPurchases, btcSales, solSales, cryptoSnapshots]);
 
   return (
     <>

@@ -1,0 +1,35 @@
+-- CreateTable
+CREATE TABLE "BtcSale" (
+    "id" TEXT NOT NULL,
+    "date" TIMESTAMP(3) NOT NULL,
+    "btcAmount" DOUBLE PRECISION NOT NULL,
+    "commissionUsdw" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "btcPriceUsdw" DOUBLE PRECISION NOT NULL,
+    "usdwReceived" DOUBLE PRECISION NOT NULL,
+    "notes" TEXT NOT NULL DEFAULT '',
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "userId" TEXT NOT NULL,
+
+    CONSTRAINT "BtcSale_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "SolSale" (
+    "id" TEXT NOT NULL,
+    "date" TIMESTAMP(3) NOT NULL,
+    "solAmount" DOUBLE PRECISION NOT NULL,
+    "commissionUsdw" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "solPriceUsdw" DOUBLE PRECISION NOT NULL,
+    "usdwReceived" DOUBLE PRECISION NOT NULL,
+    "notes" TEXT NOT NULL DEFAULT '',
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "userId" TEXT NOT NULL,
+
+    CONSTRAINT "SolSale_pkey" PRIMARY KEY ("id")
+);
+
+-- AddForeignKey
+ALTER TABLE "BtcSale" ADD CONSTRAINT "BtcSale_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "SolSale" ADD CONSTRAINT "SolSale_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;

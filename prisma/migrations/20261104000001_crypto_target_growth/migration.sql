@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "User" ADD COLUMN "btcTargetGrowthPct" DOUBLE PRECISION;
+ALTER TABLE "User" ADD COLUMN "solTargetGrowthPct" DOUBLE PRECISION;
