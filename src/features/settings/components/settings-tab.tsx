@@ -847,11 +847,32 @@ function InvestmentTypesSection() {
 
 // ── Root ─────────────────────────────────────────────────────────────
 
+function BackupSection() {
+  const { t } = useTranslation();
+  return (
+    <SectionCard title={t("settings.backupTitle")}>
+      <p style={{ fontSize: 13, color: "#6b7280", marginTop: 0, marginBottom: 12 }}>
+        {t("settings.backupDescription")}
+      </p>
+      <a
+        href="/api/export"
+        style={{
+          display: "inline-block", padding: "8px 16px", borderRadius: 8, border: "none",
+          background: "#059669", color: "#fff", fontWeight: 600, fontSize: 13, textDecoration: "none",
+        }}
+      >
+        {t("settings.downloadBackup")}
+      </a>
+    </SectionCard>
+  );
+}
+
 export default function SettingsTab() {
   const { t } = useTranslation();
   return (
     <div>
       <h2 style={{ fontSize: 20, fontWeight: 700, color: "#111827", marginBottom: 16 }}>{t("settings.pageTitle")}</h2>
+      <BackupSection />
       <CategoriesSection />
       <IncomeSources />
       <ImportantExpensesSection />

@@ -1,5 +1,8 @@
 export const settingsEn = {
   pageTitle: "Settings",
+  backupTitle: "Backup your data",
+  backupDescription: "Download a complete copy of everything you've entered — expenses, debts, investments, crypto — as a single JSON file. Keep it somewhere safe.",
+  downloadBackup: "⬇ Download full backup",
 
   // Generic / shared across sections
   loading: "Loading...",
@@ -68,6 +71,9 @@ export const settingsEn = {
 
 export const settingsEs: typeof settingsEn = {
   pageTitle: "Configuración",
+  backupTitle: "Respalda tus datos",
+  backupDescription: "Descarga una copia completa de todo lo que has registrado — gastos, deudas, inversiones, cripto — en un solo archivo JSON. Guárdalo en un lugar seguro.",
+  downloadBackup: "⬇ Descargar respaldo completo",
 
   // Generic / shared across sections
   loading: "Cargando...",
