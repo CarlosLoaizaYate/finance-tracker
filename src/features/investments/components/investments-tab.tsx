@@ -480,8 +480,11 @@ function SummaryContent({
           return d.getUTCFullYear() * 12 + d.getUTCMonth() <= i;
         });
         if (relevantTxs.length === 0) return;
-        const totalShares = relevantTxs.reduce((s, t) => s + t.quantity, 0);
-        const stockCost = relevantTxs.reduce((s, t) => s + t.quantity * t.priceUnit + t.commission, 0);
+        const relevantSales = (stockSalesByInv[invId] ?? []).filter(s => {
+          const d = new Date(s.saleDate);
+          return d.getUTCFullYear() * 12 + d.getUTCMonth() <= i;
+        });
+        const { heldShares: totalShares, costBasisHeld: stockCost } = computeStockPosition(relevantTxs, relevantSales);
         ti += stockCost;
         const relevantPriceSnaps = (priceSnapByInv[invId] ?? [])
           .filter(s => s.year * 12 + (s.month - 1) <= i)
@@ -503,8 +506,7 @@ function SummaryContent({
         const relevantSnaps = fund.snapshots
           .filter(s => s.year * 12 + (s.month - 1) <= i)
           .sort((a, b) => (b.year * 12 + b.month) - (a.year * 12 + a.month));
-        const totalContribs = relevantSnaps.reduce((s, x) => s + x.contribution, 0);
-        const fundInvested = fund.baseCapital + totalContribs;
+        const fundInvested = buildFundAccounting(fund.baseCapital, relevantSnaps).totalInvested;
         ti += fundInvested;
         const val = relevantSnaps[0]?.currentValue ?? fundInvested;
         tv += val;
@@ -577,7 +579,7 @@ function SummaryContent({
       data.push(row);
     }
     return data;
-  }, [invs, chartFrom, chartTo, txByInv, priceSnapByInv, funds, depositGroups, usdwPurchases, btcPurchases, solPurchases, btcSales, solSales, usdwSales, cryptoSnapshots]);
+  }, [invs, chartFrom, chartTo, txByInv, stockSalesByInv, priceSnapByInv, funds, depositGroups, usdwPurchases, btcPurchases, solPurchases, btcSales, solSales, usdwSales, cryptoSnapshots]);
 
   return (
     <>

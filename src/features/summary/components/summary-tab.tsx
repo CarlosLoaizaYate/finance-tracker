@@ -26,6 +26,7 @@ import {
   useCryptoSnapshots,
   useCryptoSettings,
   useCardInstallments,
+  useMortgages,
   effectiveIncomeAmount,
   installmentAmountAt,
 } from "@/hooks/use-finance-data";
@@ -35,7 +36,7 @@ import { fmt, gainPc } from "@/lib/formatters";
 import Kpi from "@/components/ui/kpi";
 import Badge from "@/components/ui/badge";
 import Money from "@/components/ui/money";
-import { computeSummary as computeCryptoSummary, effectiveSellCommission } from "@/features/investments/components/crypto-tab";
+import { computeSummary as computeCryptoSummary, computeCryptoValueAtMonth, effectiveSellCommission } from "@/features/investments/components/crypto-tab";
 import { computeStockPosition } from "@/features/investments/components/stock-transactions-tab";
 import { buildFundAccounting } from "@/features/investments/components/funds-tab";
 import { useTranslation } from "@/hooks/use-translation";
@@ -239,6 +240,7 @@ export default function SummaryTab() {
 
       <SavingsRateChart rangeData={rangeData} />
 
+      <NetWorthSection />
       <InvestmentsSummarySection />
       <InvestmentChartsSection />
 
@@ -247,6 +249,186 @@ export default function SummaryTab() {
 }
 
 const CDT_COLORS = ["#0891b2", "#059669", "#7c3aed", "#d97706", "#dc2626", "#2563eb", "#db2777"];
+
+function absMonthOf(iso: string): number {
+  const d = new Date(iso);
+  return d.getUTCFullYear() * 12 + d.getUTCMonth();
+}
+
+/** Net worth = total current investment value (stocks + funds + CDTs + crypto) minus total
+ * outstanding mortgage balance — the one number that crosses Expenses' sibling tabs (Debts +
+ * Investments) instead of living inside either. The historical line reuses the same per-month
+ * valuation approach as investments-tab.tsx's own "Portfolio Evolution" chart, applied here to
+ * assets and liabilities together. */
+function NetWorthSection() {
+  const { t } = useTranslation();
+  const { data: mortgages = [] } = useMortgages();
+  const { data: dbStocks = [] } = useStocks();
+  const { data: allTxs = [] } = useStockTransactions();
+  const { data: allStockSales = [] } = useStockSales();
+  const { data: allPriceSnaps = [] } = useStockPriceSnapshots();
+  const { data: funds = [] } = useFunds();
+  const { data: depositGroups = [] } = useFixedDepositGroups();
+  const { data: usdwPurchases = [] } = useUsdwPurchases();
+  const { data: btcPurchases = [] } = useBtcPurchases();
+  const { data: solPurchases = [] } = useSolPurchases();
+  const { data: btcSales = [] } = useBtcSales();
+  const { data: solSales = [] } = useSolSales();
+  const { data: usdwSales = [] } = useUsdwSales();
+  const { data: cryptoSnapshots = [] } = useCryptoSnapshots();
+
+  const txByInv = useMemo(() => {
+    const map: Record<string, typeof allTxs> = {};
+    allTxs.forEach(tx => { (map[tx.investmentId] ??= []).push(tx); });
+    return map;
+  }, [allTxs]);
+  const stockSalesByInv = useMemo(() => {
+    const map: Record<string, typeof allStockSales> = {};
+    allStockSales.forEach(s => { (map[s.investmentId] ??= []).push(s); });
+    return map;
+  }, [allStockSales]);
+  const priceSnapByInv = useMemo(() => {
+    const map: Record<string, typeof allPriceSnaps> = {};
+    allPriceSnaps.forEach(s => { (map[s.investmentId] ??= []).push(s); });
+    return map;
+  }, [allPriceSnaps]);
+
+  const cryptoSummary = useMemo(
+    () => computeCryptoSummary(usdwPurchases, btcPurchases, cryptoSnapshots, solPurchases, btcSales, solSales, usdwSales),
+    [usdwPurchases, btcPurchases, cryptoSnapshots, solPurchases, btcSales, solSales, usdwSales]
+  );
+
+  const totalAssets = useMemo(() => {
+    let total = 0;
+    dbStocks.forEach(inv => {
+      const txs = txByInv[inv.id] ?? [];
+      if (txs.length === 0) return;
+      const { heldShares, costBasisHeld } = computeStockPosition(txs, stockSalesByInv[inv.id] ?? []);
+      const latest = (priceSnapByInv[inv.id] ?? []).sort((a, b) => b.year - a.year || b.month - a.month)[0];
+      total += latest ? latest.pricePerShare * heldShares : costBasisHeld;
+    });
+    funds.forEach(f => {
+      const { totalInvested } = buildFundAccounting(f.baseCapital, f.snapshots);
+      const sorted = [...f.snapshots].sort((a, b) => (b.year * 12 + b.month) - (a.year * 12 + a.month));
+      total += sorted[0]?.currentValue ?? totalInvested;
+    });
+    depositGroups.forEach(g => {
+      const sorted = [...g.cycles].sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime());
+      const lastCycleWithData = [...sorted].reverse().find(c => (c.snapshots ?? []).length > 0);
+      const lastSnap = lastCycleWithData
+        ? [...(lastCycleWithData.snapshots ?? [])].sort((a, b) => a.year !== b.year ? a.year - b.year : a.month - b.month).at(-1)
+        : null;
+      const activeCycle = sorted.find(c => c.earnedInterest === null) ?? null;
+      const baseCycle = activeCycle ?? sorted.at(-1);
+      total += lastSnap ? lastSnap.gain : (baseCycle?.capital ?? sorted.reduce((s, c) => s + c.capitalAdded, 0));
+    });
+    total += cryptoSummary.usdValueCop + cryptoSummary.btcValueCop + cryptoSummary.solValueCop;
+    return total;
+  }, [dbStocks, txByInv, stockSalesByInv, priceSnapByInv, funds, depositGroups, cryptoSummary]);
+
+  const totalLiabilities = useMemo(() =>
+    mortgages.reduce((s, m) => {
+      const principalPaid = m.payments.reduce((ss, p) => ss + p.principalPaid, 0);
+      return s + Math.max(m.principal - principalPaid, 0);
+    }, 0),
+  [mortgages]);
+
+  const netWorth = totalAssets - totalLiabilities;
+
+  const chartData = useMemo(() => {
+    const starts: number[] = [];
+    mortgages.forEach(m => starts.push(absMonthOf(m.startDate)));
+    allTxs.forEach(tx => starts.push(absMonthOf(tx.transactionDate)));
+    funds.forEach(f => starts.push(absMonthOf(f.startDate)));
+    depositGroups.forEach(g => g.cycles.forEach(c => starts.push(absMonthOf(c.startDate))));
+    usdwPurchases.forEach(p => starts.push(absMonthOf(p.date)));
+    if (starts.length === 0) return [];
+
+    const now = new Date();
+    const startAbs = Math.min(...starts);
+    const endAbs = now.getUTCFullYear() * 12 + now.getUTCMonth();
+    const rows: { mes: string; assets: number; liabilities: number; netWorth: number }[] = [];
+
+    for (let i = startAbs; i <= endAbs; i++) {
+      let assets = 0;
+      dbStocks.forEach(inv => {
+        const relevantTxs = (txByInv[inv.id] ?? []).filter(tx => absMonthOf(tx.transactionDate) <= i);
+        if (relevantTxs.length === 0) return;
+        const relevantSales = (stockSalesByInv[inv.id] ?? []).filter(s => absMonthOf(s.saleDate) <= i);
+        const { heldShares, costBasisHeld } = computeStockPosition(relevantTxs, relevantSales);
+        const relevantSnaps = (priceSnapByInv[inv.id] ?? [])
+          .filter(s => s.year * 12 + (s.month - 1) <= i)
+          .sort((a, b) => (b.year * 12 + b.month) - (a.year * 12 + a.month));
+        assets += relevantSnaps[0] ? relevantSnaps[0].pricePerShare * heldShares : costBasisHeld;
+      });
+      funds.forEach(f => {
+        if (i < absMonthOf(f.startDate)) return;
+        const relevantSnaps = f.snapshots
+          .filter(s => s.year * 12 + (s.month - 1) <= i)
+          .sort((a, b) => (b.year * 12 + b.month) - (a.year * 12 + a.month));
+        const fundInvested = buildFundAccounting(f.baseCapital, relevantSnaps).totalInvested;
+        assets += relevantSnaps[0]?.currentValue ?? fundInvested;
+      });
+      depositGroups.forEach(g => {
+        const sortedCycles = [...g.cycles].sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime());
+        const firstCycle = sortedCycles[0];
+        if (!firstCycle || i < absMonthOf(firstCycle.startDate)) return;
+        let latestVal: number | null = null;
+        let latestAbs = -1;
+        sortedCycles.forEach(cycle => (cycle.snapshots ?? []).forEach(snap => {
+          const snapAbs = snap.year * 12 + (snap.month - 1);
+          if (snapAbs <= i && snapAbs > latestAbs) { latestAbs = snapAbs; latestVal = snap.gain; }
+        }));
+        if (latestVal !== null) { assets += latestVal; return; }
+        const baseCycle = sortedCycles.find(c => c.earnedInterest === null) ?? sortedCycles.at(-1);
+        assets += baseCycle?.capital ?? sortedCycles.reduce((s, c) => s + c.capitalAdded, 0);
+      });
+      const { value: cryptoVal } = computeCryptoValueAtMonth(usdwPurchases, btcPurchases, cryptoSnapshots, i, solPurchases, btcSales, solSales, usdwSales);
+      assets += cryptoVal;
+
+      let liabilities = 0;
+      mortgages.forEach(m => {
+        if (i < absMonthOf(m.startDate)) return;
+        const paid = m.payments.filter(p => absMonthOf(p.date) <= i).reduce((s, p) => s + p.principalPaid, 0);
+        liabilities += Math.max(m.principal - paid, 0);
+      });
+
+      const m = i % 12, y = Math.floor(i / 12);
+      rows.push({ mes: `${MONTHS[m]} ${y}`, assets, liabilities, netWorth: assets - liabilities });
+    }
+    return rows;
+  }, [mortgages, dbStocks, txByInv, stockSalesByInv, priceSnapByInv, funds, depositGroups, usdwPurchases, btcPurchases, solPurchases, btcSales, solSales, usdwSales, cryptoSnapshots, allTxs]);
+
+  if (mortgages.length === 0 && dbStocks.length === 0 && funds.length === 0 && depositGroups.length === 0
+    && usdwPurchases.length === 0) {
+    return null;
+  }
+
+  return (
+    <div style={{ background: "#fff", borderRadius: 12, padding: 16, boxShadow: "0 1px 4px #0001", marginBottom: 16 }}>
+      <h3 style={{ margin: "0 0 12px", fontSize: 14, fontWeight: 700 }}>{t("summary.netWorthTitle")}</h3>
+      <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 16 }}>
+        <Kpi title={t("summary.totalAssets")} value={<Money amount={totalAssets} />} color="#059669" />
+        <Kpi title={t("summary.totalLiabilities")} value={<Money amount={totalLiabilities} />} color="#dc2626" />
+        <Kpi title={t("summary.netWorth")} value={<Money amount={netWorth} />} color={netWorth >= 0 ? "#6366f1" : "#dc2626"} />
+      </div>
+      {chartData.length > 1 && (
+        <ResponsiveContainer width="100%" height={240}>
+          <ComposedChart data={chartData}>
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis dataKey="mes" tick={{ fontSize: 11 }} />
+            <YAxis tick={{ fontSize: 10 }} tickFormatter={(v) => `${(Number(v) / 1e6).toFixed(0)}M`} />
+            <Tooltip formatter={(v: unknown) => fmt(Number(v))} />
+            <Legend wrapperStyle={{ fontSize: 11 }} />
+            <Area type="monotone" dataKey="assets" name={t("summary.totalAssets")} fill="#d1fae5" stroke="#059669" />
+            <Area type="monotone" dataKey="liabilities" name={t("summary.totalLiabilities")} fill="#fee2e2" stroke="#dc2626" />
+            <Line type="monotone" dataKey="netWorth" name={t("summary.netWorth")} stroke="#6366f1" strokeWidth={2} dot={{ r: 2 }} />
+          </ComposedChart>
+        </ResponsiveContainer>
+      )}
+    </div>
+  );
+}
 
 function InvestmentsSummarySection() {
   const { t } = useTranslation();
