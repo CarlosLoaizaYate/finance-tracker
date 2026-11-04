@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getAuthUser } from "@/lib/auth";
+import { apiError } from "@/lib/api-error";
 
 const CATS_SEED: { name: string; color: string; items: string[] }[] = [
   {
@@ -158,33 +159,40 @@ const CATS_SEED: { name: string; color: string; items: string[] }[] = [
 ];
 
 export async function POST() {
-  const user = await getAuthUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  try {
+    const user = await getAuthUser();
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  // Delete in dependency order: records → budgetHistory → items → categories
-  await prisma.expenseRecord.deleteMany({ where: { userId: user.id } });
-  await prisma.budgetHistory.deleteMany({ where: { userId: user.id } });
-  await prisma.expenseItem.deleteMany({ where: { userId: user.id } });
-  await prisma.category.deleteMany({ where: { userId: user.id } });
+    // Wrapped in a transaction: this both deletes and recreates all categories, so a failure
+    // partway through must roll back everything rather than leaving the user with none.
+    await prisma.$transaction(async (tx) => {
+      // Delete in dependency order: records → budgetHistory → items → categories
+      await tx.expenseRecord.deleteMany({ where: { userId: user.id } });
+      await tx.budgetHistory.deleteMany({ where: { userId: user.id } });
+      await tx.expenseItem.deleteMany({ where: { userId: user.id } });
+      await tx.category.deleteMany({ where: { userId: user.id } });
 
-  // Create new categories and their items
-  for (const cat of CATS_SEED) {
-    const created = await prisma.category.create({
-      data: {
-        name: cat.name,
-        color: cat.color,
-        userId: user.id,
-        items: {
-          create: cat.items.map((itemName) => ({
-            name: itemName,
-            monthlyBudget: 0,
+      // Create new categories and their items
+      for (const cat of CATS_SEED) {
+        await tx.category.create({
+          data: {
+            name: cat.name,
+            color: cat.color,
             userId: user.id,
-          })),
-        },
-      },
+            items: {
+              create: cat.items.map((itemName) => ({
+                name: itemName,
+                monthlyBudget: 0,
+                userId: user.id,
+              })),
+            },
+          },
+        });
+      }
     });
-    void created;
-  }
 
-  return NextResponse.json({ ok: true, message: "Categorías cargadas correctamente" });
+    return NextResponse.json({ ok: true, message: "Categorías cargadas correctamente" });
+  } catch (error) {
+    return apiError("seed", "POST", error);
+  }
 }
