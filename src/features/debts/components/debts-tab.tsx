@@ -84,7 +84,7 @@ function addMonths(iso: string, months: number): Date {
 
 // ── Summary calculations ─────────────────────────────────────────────
 
-function computeMortgageSummary(mortgage: Mortgage) {
+export function computeMortgageSummary(mortgage: Mortgage) {
   const totalPrincipalPaid = mortgage.payments.reduce((s, p) => s + p.principalPaid, 0);
   const totalInterestPaid = mortgage.payments.reduce((s, p) => s + p.interestPaid, 0);
   const totalInterestCovered = mortgage.payments.reduce((s, p) => s + p.interestCovered, 0);
@@ -143,7 +143,7 @@ function groupByYear<T extends { date: string }>(rows: T[]): Array<[number, T[]]
 // and fold the subsidy's contribution into the client's own interest once
 // the benefit period ends.
 
-interface ProjectedRow {
+export interface ProjectedRow {
   date: string;
   cuotaNumber: number;
   principalPaid: number;
@@ -164,7 +164,7 @@ interface ProjectedRow {
 // every scenario (real balance, no-extra counterfactual, hypothetical
 // extra), so a real extra payment shows up as finishing early against a
 // baseline that itself lands exactly on the contracted term.
-function calibratedDeltaPrincipal(mortgage: Mortgage, regular: MortgagePayment[]): number {
+export function calibratedDeltaPrincipal(mortgage: Mortgage, regular: MortgagePayment[]): number {
   const n = mortgage.termMonths - regular.length;
   if (n < 1) return 0;
   const regularPrincipalPaid = regular.reduce((s, p) => s + p.principalPaid, 0);
@@ -176,7 +176,7 @@ function calibratedDeltaPrincipal(mortgage: Mortgage, regular: MortgagePayment[]
   return (2 * (noExtraBalance - n * a1)) / (n * (n + 1));
 }
 
-function projectRemaining(mortgage: Mortgage, extraMonthly: number): ProjectedRow[] {
+export function projectRemaining(mortgage: Mortgage, extraMonthly: number): ProjectedRow[] {
   const sorted = [...mortgage.payments].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
   // Trend/anchor must come from regular cuotas only — an extra principal
   // payment (large principal, zero interest) is a one-off event, not part
@@ -249,7 +249,7 @@ function projectRemaining(mortgage: Mortgage, extraMonthly: number): ProjectedRo
   return rows;
 }
 
-function summarizeProjection(rows: ProjectedRow[]) {
+export function summarizeProjection(rows: ProjectedRow[]) {
   const months = rows.length;
   const totalInterest = rows.reduce((s, r) => s + r.interestPaid, 0);
   const payoffDate = rows.length > 0 ? rows[rows.length - 1].date : null;
