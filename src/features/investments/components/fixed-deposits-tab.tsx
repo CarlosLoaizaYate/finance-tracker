@@ -708,26 +708,47 @@ interface RenewFormProps {
   onSave: (data: {
     groupId: string; capital: number; capitalAdded: number;
     interestRate: number; term: number; termUnit: TermUnit; startDate: string; endDate: string;
+    closePrevious?: { id: string; earnedInterest: number } | null;
   }) => void;
+  onLiquidate: (data: { id: string; earnedInterest: number }) => void;
   onCancel: () => void;
   loading: boolean;
 }
 
-function RenewForm({ group, prevCycle, onSave, onCancel, loading }: RenewFormProps) {
+/** Keeps a leading "-" (for a withdrawal) while formatting the digits with thousands dots. */
+function formatSignedCopInput(raw: string): string {
+  const negative = raw.trim().startsWith("-");
+  const digits = raw.replace(/[^\d]/g, "");
+  const withThousands = digits.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  return (negative ? "-" : "") + withThousands;
+}
+
+function RenewForm({ group, prevCycle, onSave, onLiquidate, onCancel, loading }: RenewFormProps) {
   const { t } = useTranslation();
   const sortedSnaps = [...(prevCycle.snapshots ?? [])].sort(compareSnapshots);
   const lastSnap = sortedSnaps.at(-1);
   const hasRealSnaps = sortedSnaps.length > 0;
   const realAccGain = lastSnap ? lastSnap.gain - prevCycle.capital : 0;
   const prevValue = hasRealSnaps ? (lastSnap!.gain) : prevCycle.capital + (prevCycle.earnedInterest ?? 0);
+  // What to record as this cycle's earned interest if it needs closing (withdrawal/liquidation)
+  // and hasn't already been closed — real accumulated gain if we have snapshot data, otherwise
+  // the same estimate CycleRow's own close-interest default uses.
+  const gainToClose = hasRealSnaps
+    ? realAccGain
+    : calcExpectedValue(prevCycle.capital, prevCycle.interestRate, prevCycle.term, prevCycle.termUnit) - prevCycle.capital;
+  const alreadyClosed = prevCycle.earnedInterest !== null;
+
   const [extraCapital, setExtraCapital] = useState("0");
   const [rate, setRate] = useState(String(prevCycle.interestRate));
   const [term, setTerm] = useState(String(prevCycle.term));
   const [termUnit, setTermUnit] = useState<TermUnit>(prevCycle.termUnit);
   const [startDate, setStartDate] = useState(prevCycle.endDate.split("T")[0]);
 
-  const capitalAdded = Number(extraCapital.replace(/\D/g, "")) || 0;
-  const newCapital = prevValue + capitalAdded;
+  const capitalAdded = Number(extraCapital.replace(/\./g, "")) || 0;
+  const newCapital = Math.max(prevValue + capitalAdded, 0);
+  const isWithdrawal = capitalAdded < 0;
+  const isFullLiquidation = newCapital <= 0;
+  const withdrawnAmount = isWithdrawal ? Math.min(-capitalAdded, prevValue) : 0;
 
   const endDate = useMemo(() => {
     if (!startDate) return "";
@@ -737,6 +758,10 @@ function RenewForm({ group, prevCycle, onSave, onCancel, loading }: RenewFormPro
   const expectedValue = calcExpectedValue(newCapital, Number(rate), Number(term), termUnit);
 
   function handleSubmit() {
+    if (isFullLiquidation) {
+      onLiquidate({ id: prevCycle.id, earnedInterest: alreadyClosed ? prevCycle.earnedInterest! : gainToClose });
+      return;
+    }
     onSave({
       groupId: group.id,
       capital: newCapital,
@@ -746,6 +771,7 @@ function RenewForm({ group, prevCycle, onSave, onCancel, loading }: RenewFormPro
       termUnit,
       startDate,
       endDate,
+      closePrevious: (isWithdrawal && !alreadyClosed) ? { id: prevCycle.id, earnedInterest: gainToClose } : null,
     });
   }
 
@@ -762,22 +788,23 @@ function RenewForm({ group, prevCycle, onSave, onCancel, loading }: RenewFormPro
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 12, marginBottom: 12 }}>
         <div>
-          <span style={label}>{t("fixedDeposits.additionalCapital")}</span>
+          <span style={label}>{t("fixedDeposits.additionalCapital")} <span style={{ color: "#9ca3af" }}>{t("fixedDeposits.negativeIsWithdrawal")}</span></span>
           <input style={input} placeholder="0" value={extraCapital}
-            onChange={e => setExtraCapital(e.target.value.replace(/\D/g, "").replace(/\B(?=(\d{3})+(?!\d))/g, "."))} />
+            onChange={e => setExtraCapital(formatSignedCopInput(e.target.value))} />
         </div>
         <div>
           <span style={label}>{t("fixedDeposits.eaRate")}</span>
-          <input style={input} type="number" value={rate} onChange={e => setRate(e.target.value)} />
+          <input style={input} type="number" value={rate} onChange={e => setRate(e.target.value)} disabled={isFullLiquidation} />
         </div>
         <div>
           <span style={label}>{t("fixedDeposits.termLabelWord")}</span>
           <div style={{ display: "flex", gap: 6 }}>
-            <input style={{ ...input, flex: 1 }} type="number" min={1} value={term} onChange={e => setTerm(e.target.value)} />
+            <input style={{ ...input, flex: 1 }} type="number" min={1} value={term} onChange={e => setTerm(e.target.value)} disabled={isFullLiquidation} />
             <select
               value={termUnit}
               onChange={e => setTermUnit(e.target.value as TermUnit)}
               style={{ ...input, width: 90 }}
+              disabled={isFullLiquidation}
             >
               <option value="DAYS">{t("fixedDeposits.daysOption")}</option>
               <option value="MONTHS">{t("fixedDeposits.monthsOption")}</option>
@@ -789,15 +816,26 @@ function RenewForm({ group, prevCycle, onSave, onCancel, loading }: RenewFormPro
           <input style={input} type="date" value={startDate} onChange={e => setStartDate(e.target.value)} />
         </div>
       </div>
-      <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 12 }}>
-        {t("fixedDeposits.newCapitalLabel")} <strong>{<Money amount={newCapital} />}</strong>
-        {capitalAdded > 0 && <span> ({<Money amount={prevValue} />} + {<Money amount={capitalAdded} />})</span>}
-        {" "}· {t("fixedDeposits.expectedValueLabel")} <strong style={{ color: "#16a34a" }}>{<Money amount={expectedValue} />}</strong>
-        {endDate && <>{" "}· {t("fixedDeposits.maturityLabel")} <strong>{formatDate(endDate)}</strong></>}
-      </div>
+      {isFullLiquidation ? (
+        <div style={{ fontSize: 12, color: "#dc2626", marginBottom: 12, background: "#fef2f2", borderRadius: 6, padding: "8px 10px" }}>
+          {t("fixedDeposits.fullLiquidationNote", { amount: fmt(prevValue) })}
+        </div>
+      ) : (
+        <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 12 }}>
+          {isWithdrawal ? (
+            <>
+              {t("fixedDeposits.withdrawalNote", { amount: fmt(withdrawnAmount) })}{" "}
+            </>
+          ) : null}
+          {t("fixedDeposits.newCapitalLabel")} <strong>{<Money amount={newCapital} />}</strong>
+          {capitalAdded > 0 && <span> ({<Money amount={prevValue} />} + {<Money amount={capitalAdded} />})</span>}
+          {" "}· {t("fixedDeposits.expectedValueLabel")} <strong style={{ color: "#16a34a" }}>{<Money amount={expectedValue} />}</strong>
+          {endDate && <>{" "}· {t("fixedDeposits.maturityLabel")} <strong>{formatDate(endDate)}</strong></>}
+        </div>
+      )}
       <div style={{ display: "flex", gap: 8 }}>
-        <button onClick={handleSubmit} style={btn()} disabled={loading}>
-          {loading ? t("fixedDeposits.saving") : t("fixedDeposits.renew")}
+        <button onClick={handleSubmit} style={btn(isFullLiquidation ? "#dc2626" : "#7c3aed")} disabled={loading}>
+          {loading ? t("fixedDeposits.saving") : isFullLiquidation ? t("fixedDeposits.liquidate") : t("fixedDeposits.renew")}
         </button>
         <button onClick={onCancel} style={ghost}>{t("fixedDeposits.cancel")}</button>
       </div>
@@ -863,8 +901,19 @@ function GroupDetail({ group, onBack }: GroupDetailProps) {
   const summary = useMemo(() => computeSummary(group), [group]);
   const lastCycle = sorted.at(-1);
 
-  async function handleRenew(data: Parameters<typeof addCycleMut.mutateAsync>[0]) {
-    await addCycleMut.mutateAsync(data);
+  async function handleRenew(data: Parameters<typeof addCycleMut.mutateAsync>[0] & {
+    closePrevious?: { id: string; earnedInterest: number } | null;
+  }) {
+    const { closePrevious, ...cycleData } = data;
+    if (closePrevious) {
+      await closeCycleMut.mutateAsync(closePrevious);
+    }
+    await addCycleMut.mutateAsync(cycleData);
+    setShowRenew(false);
+  }
+
+  async function handleLiquidate(data: { id: string; earnedInterest: number }) {
+    await closeCycleMut.mutateAsync(data);
     setShowRenew(false);
   }
 
@@ -895,8 +944,9 @@ function GroupDetail({ group, onBack }: GroupDetailProps) {
           group={group}
           prevCycle={lastCycle}
           onSave={handleRenew}
+          onLiquidate={handleLiquidate}
           onCancel={() => setShowRenew(false)}
-          loading={addCycleMut.isPending}
+          loading={addCycleMut.isPending || closeCycleMut.isPending}
         />
       )}
 

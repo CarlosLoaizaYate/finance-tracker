@@ -67,8 +67,12 @@ export const fixedDepositsEn = {
   interestWord: "interest",
   noRealData: "no real data",
   additionalCapital: "Additional capital ($)",
+  negativeIsWithdrawal: "· negative = withdrawal",
   newCapitalLabel: "New capital:",
+  withdrawalNote: "Withdrawing {{amount}}.",
+  fullLiquidationNote: "This fully liquidates the CDT — you withdraw {{amount}} and it won't renew.",
   renew: "Renew",
+  liquidate: "Liquidate",
 
   // Close cycle form
   closeCycleTitle: "Close cycle",
@@ -165,8 +169,12 @@ export const fixedDepositsEs: typeof fixedDepositsEn = {
   interestWord: "interés",
   noRealData: "sin datos reales",
   additionalCapital: "Capital adicional ($)",
+  negativeIsWithdrawal: "· negativo = retiro",
   newCapitalLabel: "Nuevo capital:",
+  withdrawalNote: "Retiras {{amount}}.",
+  fullLiquidationNote: "Esto liquida completamente el CDT — retiras {{amount}} y no se renueva.",
   renew: "Renovar",
+  liquidate: "Liquidar",
 
   // Close cycle form
   closeCycleTitle: "Cerrar ciclo",
