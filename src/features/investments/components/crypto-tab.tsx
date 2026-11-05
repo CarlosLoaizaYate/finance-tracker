@@ -556,14 +556,24 @@ export default function CryptoTab() {
   const usdwSellCommission = effectiveSellCommission(settings?.usdwSellCommission ?? 0, summary.usdValueCop, commissionRate);
   const usdwNetIfSoldCop = summary.usdwGainCop - usdwSellCommission;
   const usdwNetIfSoldPct = summary.usdwCostBasisCop > 0 ? (usdwNetIfSoldCop / summary.usdwCostBasisCop) * 100 : 0;
+  // Same commission, converted to USDW at the current rate (it's stored/edited in COP).
+  const usdwSellCommissionUsd = summary.usdCopRateNow > 0 ? usdwSellCommission / summary.usdCopRateNow : 0;
+  const usdwNetIfSoldUsd = summary.usdwGainUsd - usdwSellCommissionUsd;
+  const usdwNetIfSoldUsdPct = summary.usdwHeldDerived > 0 ? (usdwNetIfSoldUsd / summary.usdwHeldDerived) * 100 : 0;
 
   const btcSellCommission = effectiveSellCommission(settings?.btcSellCommission ?? 0, summary.btcValueCop, commissionRate);
   const btcNetIfSoldCop = summary.btcGainCop - btcSellCommission;
   const btcNetIfSoldPct = summary.btcCostBasisCop > 0 ? (btcNetIfSoldCop / summary.btcCostBasisCop) * 100 : 0;
+  const btcSellCommissionUsd = summary.usdCopRateNow > 0 ? btcSellCommission / summary.usdCopRateNow : 0;
+  const btcNetIfSoldUsd = summary.btcGainUsd - btcSellCommissionUsd;
+  const btcNetIfSoldUsdPct = summary.btcCostUsdw > 0 ? (btcNetIfSoldUsd / summary.btcCostUsdw) * 100 : 0;
 
   const solSellCommission = effectiveSellCommission(settings?.solSellCommission ?? 0, summary.solValueCop, commissionRate);
   const solNetIfSoldCop = summary.solGainCop - solSellCommission;
   const solNetIfSoldPct = summary.solCostBasisCop > 0 ? (solNetIfSoldCop / summary.solCostBasisCop) * 100 : 0;
+  const solSellCommissionUsd = summary.usdCopRateNow > 0 ? solSellCommission / summary.usdCopRateNow : 0;
+  const solNetIfSoldUsd = summary.solGainUsd - solSellCommissionUsd;
+  const solNetIfSoldUsdPct = summary.solCostUsdw > 0 ? (solNetIfSoldUsd / summary.solCostUsdw) * 100 : 0;
 
   const latestSnapIso = summary.latestSnapshot
     ? `${summary.latestSnapshot.year}-${String(summary.latestSnapshot.month).padStart(2, "0")}-${String(summary.latestSnapshot.day).padStart(2, "0")}`
@@ -578,6 +588,7 @@ export default function CryptoTab() {
   const [showBtcSaleForm, setShowBtcSaleForm] = useState(false);
   const [showSolSaleForm, setShowSolSaleForm] = useState(false);
   const [showSnapForm, setShowSnapForm] = useState(false);
+  const [cryptoView, setCryptoView] = useState<"cop" | "usd">("cop");
 
   return (
     <>
@@ -613,6 +624,28 @@ export default function CryptoTab() {
       </div>
 
       {/* Summary cards */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+        <span style={{ fontSize: 12, color: "#6b7280" }}>{t("crypto.viewToggleLabel")}</span>
+        <div style={{ display: "inline-flex", border: "1px solid #d1d5db", borderRadius: 6, overflow: "hidden" }}>
+          {(["cop", "usd"] as const).map(v => (
+            <button
+              key={v}
+              onClick={() => setCryptoView(v)}
+              style={{
+                padding: "4px 12px",
+                fontSize: 12,
+                fontWeight: 600,
+                border: "none",
+                cursor: "pointer",
+                background: cryptoView === v ? "#7c3aed" : "transparent",
+                color: cryptoView === v ? "#fff" : "#6b7280",
+              }}
+            >
+              {v === "cop" ? t("crypto.viewCop") : t("crypto.viewUsd")}
+            </button>
+          ))}
+        </div>
+      </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16, marginBottom: 16 }}>
         <div style={card}>
           <div style={{ fontSize: 13, fontWeight: 700, color: "#374151", marginBottom: 12 }}>
@@ -622,196 +655,277 @@ export default function CryptoTab() {
             )}
           </div>
           <StatRow label={t("crypto.held")} value={<Money amount={summary.usdwHeld} currency="USDW" />} />
-          <StatRow label={t("crypto.invested")} value={<Money amount={summary.usdwCostBasisCop} />} />
-          <StatRow label={t("crypto.valueInCop")} value={<Money amount={summary.usdValueCop} />} valueColor="#059669" />
-          <StatRow label={t("crypto.avgBuyRatePerUsd")} value={summary.avgHeldRate > 0 ? <Money amount={summary.avgHeldRate} /> : "—"} />
+          {cryptoView === "cop" ? (
+            <>
+              <StatRow label={t("crypto.invested")} value={<Money amount={summary.usdwCostBasisCop} />} />
+              <StatRow label={t("crypto.valueInCop")} value={<Money amount={summary.usdValueCop} />} valueColor="#059669" />
+              <StatRow label={t("crypto.avgBuyRatePerUsd")} value={summary.avgHeldRate > 0 ? <Money amount={summary.avgHeldRate} /> : "—"} />
+            </>
+          ) : (
+            <StatRow label={t("crypto.invested")} value={<Money amount={summary.usdwHeldDerived} currency="USDW" />} />
+          )}
 
           <SectionLabel>{t("crypto.performance")}</SectionLabel>
           <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", fontSize: 13, alignItems: "center" }}>
             <span style={{ color: "#6b7280" }}>{t("crypto.growthSincePurchase")}</span>
             <GrowthWithTarget pct={summary.usdGrowthPct} hasData={summary.avgHeldRate > 0} target={null} />
           </div>
-          <StatRow
-            label={t("crypto.currencyEffectCop")}
-            value={summary.avgHeldRate > 0
-              ? <>{summary.usdwFxEffectCop >= 0 ? "+" : ""}<Money amount={summary.usdwFxEffectCop} /></>
-              : "—"}
-            valueColor={summary.usdwFxEffectCop >= 0 ? "#059669" : "#dc2626"}
-          />
-          <StatRow
-            label={t("crypto.gainLossUsd")}
-            value={summary.usdwHeldDerived > 0 || summary.hasUsdwBalanceOverride
-              ? <>{summary.usdwGainUsd >= 0 ? "+" : ""}<Money amount={summary.usdwGainUsd} currency="USDW" /></>
-              : "—"}
-            valueColor={summary.usdwGainUsd >= 0 ? "#059669" : "#dc2626"}
-          />
-          <StatRow
-            label={t("crypto.gainLossCop")}
-            value={summary.usdwHeldDerived > 0 || summary.hasUsdwBalanceOverride
-              ? <>{summary.usdwGainCop >= 0 ? "+" : ""}<Money amount={summary.usdwGainCop} /></>
-              : "—"}
-            valueColor={summary.usdwGainCop >= 0 ? "#059669" : "#dc2626"}
-          />
-          <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", fontSize: 13, alignItems: "center" }}>
-            <span style={{ color: "#6b7280" }}>
-              {t("crypto.sellCommission")} <span style={{ color: "#9ca3af" }}>{t("crypto.defaultPct", { pct: (commissionRate * 100).toFixed(2) })}</span>
-            </span>
-            <EditableCell
-              value={usdwSellCommission}
-              edited={(settings?.usdwSellCommission ?? 0) > 0}
-              onChange={v => updateUsdwSellCommMut.mutate(v)}
-            />
-          </div>
-          <StatRow
-            label={t("crypto.netIfSold")}
-            value={summary.usdwHeldDerived > 0 || summary.hasUsdwBalanceOverride
-              ? <>{usdwNetIfSoldCop >= 0 ? "+" : ""}<Money amount={usdwNetIfSoldCop} /> ({usdwNetIfSoldPct >= 0 ? "+" : ""}{usdwNetIfSoldPct.toFixed(2)}%)</>
-              : "—"}
-            valueColor={usdwNetIfSoldCop >= 0 ? "#059669" : "#dc2626"}
-          />
+          {cryptoView === "cop" ? (
+            <>
+              <StatRow
+                label={t("crypto.currencyEffectCop")}
+                value={summary.avgHeldRate > 0
+                  ? <>{summary.usdwFxEffectCop >= 0 ? "+" : ""}<Money amount={summary.usdwFxEffectCop} /></>
+                  : "—"}
+                valueColor={summary.usdwFxEffectCop >= 0 ? "#059669" : "#dc2626"}
+              />
+              <StatRow
+                label={t("crypto.gainLossCop")}
+                value={summary.usdwHeldDerived > 0 || summary.hasUsdwBalanceOverride
+                  ? <>{summary.usdwGainCop >= 0 ? "+" : ""}<Money amount={summary.usdwGainCop} /></>
+                  : "—"}
+                valueColor={summary.usdwGainCop >= 0 ? "#059669" : "#dc2626"}
+              />
+              <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", fontSize: 13, alignItems: "center" }}>
+                <span style={{ color: "#6b7280" }}>
+                  {t("crypto.sellCommission")} <span style={{ color: "#9ca3af" }}>{t("crypto.defaultPct", { pct: (commissionRate * 100).toFixed(2) })}</span>
+                </span>
+                <EditableCell
+                  value={usdwSellCommission}
+                  edited={(settings?.usdwSellCommission ?? 0) > 0}
+                  onChange={v => updateUsdwSellCommMut.mutate(v)}
+                />
+              </div>
+              <StatRow
+                label={t("crypto.netIfSold")}
+                value={summary.usdwHeldDerived > 0 || summary.hasUsdwBalanceOverride
+                  ? <>{usdwNetIfSoldCop >= 0 ? "+" : ""}<Money amount={usdwNetIfSoldCop} /> ({usdwNetIfSoldPct >= 0 ? "+" : ""}{usdwNetIfSoldPct.toFixed(2)}%)</>
+                  : "—"}
+                valueColor={usdwNetIfSoldCop >= 0 ? "#059669" : "#dc2626"}
+              />
+            </>
+          ) : (
+            <>
+              <StatRow
+                label={t("crypto.gainLossUsd")}
+                value={summary.usdwHeldDerived > 0 || summary.hasUsdwBalanceOverride
+                  ? <>{summary.usdwGainUsd >= 0 ? "+" : ""}<Money amount={summary.usdwGainUsd} currency="USDW" /></>
+                  : "—"}
+                valueColor={summary.usdwGainUsd >= 0 ? "#059669" : "#dc2626"}
+              />
+              <StatRow
+                label={t("crypto.netIfSoldUsd")}
+                value={summary.usdwHeldDerived > 0 || summary.hasUsdwBalanceOverride
+                  ? <>{usdwNetIfSoldUsd >= 0 ? "+" : ""}<Money amount={usdwNetIfSoldUsd} currency="USDW" /> ({usdwNetIfSoldUsdPct >= 0 ? "+" : ""}{usdwNetIfSoldUsdPct.toFixed(2)}%)</>
+                  : "—"}
+                valueColor={usdwNetIfSoldUsd >= 0 ? "#059669" : "#dc2626"}
+              />
+              <div style={{ fontSize: 11, color: "#9ca3af", textAlign: "right", marginTop: -4 }}>
+                {t("crypto.sellCommission")}: <Money amount={usdwSellCommissionUsd} currency="USDW" /> ({t("crypto.editInCopView")})
+              </div>
+            </>
+          )}
 
-          <SectionLabel>{t("crypto.realizedTitle")}</SectionLabel>
-          <StatRow
-            label={t("crypto.realizedGainCop")}
-            value={usdwSales.length > 0
-              ? <>{summary.usdwRealizedGainCop >= 0 ? "+" : ""}<Money amount={summary.usdwRealizedGainCop} /></>
-              : "—"}
-            valueColor={summary.usdwRealizedGainCop >= 0 ? "#059669" : "#dc2626"}
-          />
+          {cryptoView === "cop" && (
+            <>
+              <SectionLabel>{t("crypto.realizedTitle")}</SectionLabel>
+              <StatRow
+                label={t("crypto.realizedGainCop")}
+                value={usdwSales.length > 0
+                  ? <>{summary.usdwRealizedGainCop >= 0 ? "+" : ""}<Money amount={summary.usdwRealizedGainCop} /></>
+                  : "—"}
+                valueColor={summary.usdwRealizedGainCop >= 0 ? "#059669" : "#dc2626"}
+              />
+            </>
+          )}
         </div>
         <div style={card}>
           <div style={{ fontSize: 13, fontWeight: 700, color: "#374151", marginBottom: 12 }}>{t("crypto.btcTitle")}</div>
           <StatRow label={t("crypto.held")} value={<Money amount={summary.btcHeld} currency="BTC" />} />
-          <StatRow label={t("crypto.investedUsd")} value={summary.btcCostUsdw > 0 ? <Money amount={summary.btcCostUsdw} currency="USDW" /> : "—"} />
-          <StatRow label={t("crypto.investedCop")} value={summary.btcCostUsdw > 0 ? <Money amount={summary.btcCostBasisCop} /> : "—"} />
-          <StatRow label={t("crypto.avgBuyPricePerBtc")} value={summary.avgBtcBuyPriceUsdw > 0 ? <Money amount={summary.avgBtcBuyPriceUsdw} currency="USDW" /> : "—"} />
-          <StatRow label={t("crypto.btcPrice")} value={summary.btcPriceUsdNow > 0 ? <Money amount={summary.btcPriceUsdNow} currency="USD" /> : "—"} />
-          <StatRow label={t("crypto.valueInUsd")} value={<Money amount={summary.btcValueUsd} currency="USD" />} valueColor="#059669" />
-          <StatRow label={t("crypto.valueInCop")} value={<Money amount={summary.btcValueCop} />} valueColor="#059669" />
+          {cryptoView === "cop" ? (
+            <>
+              <StatRow label={t("crypto.investedCop")} value={summary.btcCostUsdw > 0 ? <Money amount={summary.btcCostBasisCop} /> : "—"} />
+              <StatRow label={t("crypto.valueInCop")} value={<Money amount={summary.btcValueCop} />} valueColor="#059669" />
+            </>
+          ) : (
+            <>
+              <StatRow label={t("crypto.investedUsd")} value={summary.btcCostUsdw > 0 ? <Money amount={summary.btcCostUsdw} currency="USDW" /> : "—"} />
+              <StatRow label={t("crypto.avgBuyPricePerBtc")} value={summary.avgBtcBuyPriceUsdw > 0 ? <Money amount={summary.avgBtcBuyPriceUsdw} currency="USDW" /> : "—"} />
+              <StatRow label={t("crypto.btcPrice")} value={summary.btcPriceUsdNow > 0 ? <Money amount={summary.btcPriceUsdNow} currency="USD" /> : "—"} />
+              <StatRow label={t("crypto.valueInUsd")} value={<Money amount={summary.btcValueUsd} currency="USD" />} valueColor="#059669" />
+            </>
+          )}
 
           <SectionLabel>{t("crypto.performance")}</SectionLabel>
           <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", fontSize: 13, alignItems: "center" }}>
             <span style={{ color: "#6b7280" }}>{t("crypto.growthSincePurchase")}</span>
             <GrowthWithTarget pct={summary.btcGrowthPct} hasData={summary.btcCostUsdw > 0} target={settings?.btcTargetGrowthPct ?? null} />
           </div>
-          <StatRow
-            label={t("crypto.gainLossUsd")}
-            value={summary.btcCostUsdw > 0
-              ? <>{summary.btcGainUsd >= 0 ? "+" : ""}<Money amount={summary.btcGainUsd} currency="USD" /></>
-              : "—"}
-            valueColor={summary.btcGainUsd >= 0 ? "#059669" : "#dc2626"}
-          />
-          <StatRow
-            label={t("crypto.gainLossCop")}
-            value={summary.btcCostUsdw > 0
-              ? <>{summary.btcGainCop >= 0 ? "+" : ""}<Money amount={summary.btcGainCop} /></>
-              : "—"}
-            valueColor={summary.btcGainCop >= 0 ? "#059669" : "#dc2626"}
-          />
-          <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", fontSize: 13, alignItems: "center" }}>
-            <span style={{ color: "#6b7280" }}>
-              {t("crypto.sellCommission")} <span style={{ color: "#9ca3af" }}>{t("crypto.defaultPct", { pct: (commissionRate * 100).toFixed(2) })}</span>
-            </span>
-            <EditableCell
-              value={btcSellCommission}
-              edited={(settings?.btcSellCommission ?? 0) > 0}
-              onChange={v => updateBtcSellCommMut.mutate(v)}
-            />
-          </div>
-          <StatRow
-            label={t("crypto.netIfSold")}
-            value={summary.btcCostUsdw > 0
-              ? <>{btcNetIfSoldCop >= 0 ? "+" : ""}<Money amount={btcNetIfSoldCop} /> ({btcNetIfSoldPct >= 0 ? "+" : ""}{btcNetIfSoldPct.toFixed(2)}%)</>
-              : "—"}
-            valueColor={btcNetIfSoldCop >= 0 ? "#059669" : "#dc2626"}
-          />
+          {cryptoView === "cop" ? (
+            <>
+              <StatRow
+                label={t("crypto.gainLossCop")}
+                value={summary.btcCostUsdw > 0
+                  ? <>{summary.btcGainCop >= 0 ? "+" : ""}<Money amount={summary.btcGainCop} /></>
+                  : "—"}
+                valueColor={summary.btcGainCop >= 0 ? "#059669" : "#dc2626"}
+              />
+              <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", fontSize: 13, alignItems: "center" }}>
+                <span style={{ color: "#6b7280" }}>
+                  {t("crypto.sellCommission")} <span style={{ color: "#9ca3af" }}>{t("crypto.defaultPct", { pct: (commissionRate * 100).toFixed(2) })}</span>
+                </span>
+                <EditableCell
+                  value={btcSellCommission}
+                  edited={(settings?.btcSellCommission ?? 0) > 0}
+                  onChange={v => updateBtcSellCommMut.mutate(v)}
+                />
+              </div>
+              <StatRow
+                label={t("crypto.netIfSold")}
+                value={summary.btcCostUsdw > 0
+                  ? <>{btcNetIfSoldCop >= 0 ? "+" : ""}<Money amount={btcNetIfSoldCop} /> ({btcNetIfSoldPct >= 0 ? "+" : ""}{btcNetIfSoldPct.toFixed(2)}%)</>
+                  : "—"}
+                valueColor={btcNetIfSoldCop >= 0 ? "#059669" : "#dc2626"}
+              />
+            </>
+          ) : (
+            <>
+              <StatRow
+                label={t("crypto.gainLossUsd")}
+                value={summary.btcCostUsdw > 0
+                  ? <>{summary.btcGainUsd >= 0 ? "+" : ""}<Money amount={summary.btcGainUsd} currency="USD" /></>
+                  : "—"}
+                valueColor={summary.btcGainUsd >= 0 ? "#059669" : "#dc2626"}
+              />
+              <StatRow
+                label={t("crypto.netIfSoldUsd")}
+                value={summary.btcCostUsdw > 0
+                  ? <>{btcNetIfSoldUsd >= 0 ? "+" : ""}<Money amount={btcNetIfSoldUsd} currency="USD" /> ({btcNetIfSoldUsdPct >= 0 ? "+" : ""}{btcNetIfSoldUsdPct.toFixed(2)}%)</>
+                  : "—"}
+                valueColor={btcNetIfSoldUsd >= 0 ? "#059669" : "#dc2626"}
+              />
+              <div style={{ fontSize: 11, color: "#9ca3af", textAlign: "right", marginTop: -4 }}>
+                {t("crypto.sellCommission")}: <Money amount={btcSellCommissionUsd} currency="USD" /> ({t("crypto.editInCopView")})
+              </div>
+            </>
+          )}
           <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", fontSize: 13, alignItems: "center" }}>
             <span style={{ color: "#6b7280" }}>{t("crypto.targetGrowthLabel")}</span>
             <TargetPercentEditableCell value={settings?.btcTargetGrowthPct ?? null} onChange={v => updateBtcTargetMut.mutate(v)} />
           </div>
 
           <SectionLabel>{t("crypto.realizedTitle")}</SectionLabel>
-          <StatRow
-            label={t("crypto.realizedGainUsd")}
-            value={btcSales.length > 0
-              ? <>{summary.btcRealizedGainUsdw >= 0 ? "+" : ""}<Money amount={summary.btcRealizedGainUsdw} currency="USDW" /></>
-              : "—"}
-            valueColor={summary.btcRealizedGainUsdw >= 0 ? "#059669" : "#dc2626"}
-          />
-          <StatRow
-            label={t("crypto.realizedGainCop")}
-            value={btcSales.length > 0
-              ? <>{summary.btcRealizedGainCop >= 0 ? "+" : ""}<Money amount={summary.btcRealizedGainCop} /></>
-              : "—"}
-            valueColor={summary.btcRealizedGainCop >= 0 ? "#059669" : "#dc2626"}
-          />
+          {cryptoView === "cop" ? (
+            <StatRow
+              label={t("crypto.realizedGainCop")}
+              value={btcSales.length > 0
+                ? <>{summary.btcRealizedGainCop >= 0 ? "+" : ""}<Money amount={summary.btcRealizedGainCop} /></>
+                : "—"}
+              valueColor={summary.btcRealizedGainCop >= 0 ? "#059669" : "#dc2626"}
+            />
+          ) : (
+            <StatRow
+              label={t("crypto.realizedGainUsd")}
+              value={btcSales.length > 0
+                ? <>{summary.btcRealizedGainUsdw >= 0 ? "+" : ""}<Money amount={summary.btcRealizedGainUsdw} currency="USDW" /></>
+                : "—"}
+              valueColor={summary.btcRealizedGainUsdw >= 0 ? "#059669" : "#dc2626"}
+            />
+          )}
         </div>
         <div style={card}>
           <div style={{ fontSize: 13, fontWeight: 700, color: "#374151", marginBottom: 12 }}>{t("crypto.solTitle")}</div>
           <StatRow label={t("crypto.held")} value={<Money amount={summary.solHeld} currency="SOL" />} />
-          <StatRow label={t("crypto.investedUsd")} value={summary.solCostUsdw > 0 ? <Money amount={summary.solCostUsdw} currency="USDW" /> : "—"} />
-          <StatRow label={t("crypto.investedCop")} value={summary.solCostUsdw > 0 ? <Money amount={summary.solCostBasisCop} /> : "—"} />
-          <StatRow label={t("crypto.avgBuyPricePerSol")} value={summary.avgSolBuyPriceUsdw > 0 ? <Money amount={summary.avgSolBuyPriceUsdw} currency="USDW" /> : "—"} />
-          <StatRow label={t("crypto.solPrice")} value={summary.solPriceUsdNow > 0 ? <Money amount={summary.solPriceUsdNow} currency="USD" /> : "—"} />
-          <StatRow label={t("crypto.valueInUsd")} value={<Money amount={summary.solValueUsd} currency="USD" />} valueColor="#059669" />
-          <StatRow label={t("crypto.valueInCop")} value={<Money amount={summary.solValueCop} />} valueColor="#059669" />
+          {cryptoView === "cop" ? (
+            <>
+              <StatRow label={t("crypto.investedCop")} value={summary.solCostUsdw > 0 ? <Money amount={summary.solCostBasisCop} /> : "—"} />
+              <StatRow label={t("crypto.valueInCop")} value={<Money amount={summary.solValueCop} />} valueColor="#059669" />
+            </>
+          ) : (
+            <>
+              <StatRow label={t("crypto.investedUsd")} value={summary.solCostUsdw > 0 ? <Money amount={summary.solCostUsdw} currency="USDW" /> : "—"} />
+              <StatRow label={t("crypto.avgBuyPricePerSol")} value={summary.avgSolBuyPriceUsdw > 0 ? <Money amount={summary.avgSolBuyPriceUsdw} currency="USDW" /> : "—"} />
+              <StatRow label={t("crypto.solPrice")} value={summary.solPriceUsdNow > 0 ? <Money amount={summary.solPriceUsdNow} currency="USD" /> : "—"} />
+              <StatRow label={t("crypto.valueInUsd")} value={<Money amount={summary.solValueUsd} currency="USD" />} valueColor="#059669" />
+            </>
+          )}
 
           <SectionLabel>{t("crypto.performance")}</SectionLabel>
           <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", fontSize: 13, alignItems: "center" }}>
             <span style={{ color: "#6b7280" }}>{t("crypto.growthSincePurchase")}</span>
             <GrowthWithTarget pct={summary.solGrowthPct} hasData={summary.solCostUsdw > 0} target={settings?.solTargetGrowthPct ?? null} />
           </div>
-          <StatRow
-            label={t("crypto.gainLossUsd")}
-            value={summary.solCostUsdw > 0
-              ? <>{summary.solGainUsd >= 0 ? "+" : ""}<Money amount={summary.solGainUsd} currency="USD" /></>
-              : "—"}
-            valueColor={summary.solGainUsd >= 0 ? "#059669" : "#dc2626"}
-          />
-          <StatRow
-            label={t("crypto.gainLossCop")}
-            value={summary.solCostUsdw > 0
-              ? <>{summary.solGainCop >= 0 ? "+" : ""}<Money amount={summary.solGainCop} /></>
-              : "—"}
-            valueColor={summary.solGainCop >= 0 ? "#059669" : "#dc2626"}
-          />
-          <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", fontSize: 13, alignItems: "center" }}>
-            <span style={{ color: "#6b7280" }}>
-              {t("crypto.sellCommission")} <span style={{ color: "#9ca3af" }}>{t("crypto.defaultPct", { pct: (commissionRate * 100).toFixed(2) })}</span>
-            </span>
-            <EditableCell
-              value={solSellCommission}
-              edited={(settings?.solSellCommission ?? 0) > 0}
-              onChange={v => updateSolSellCommMut.mutate(v)}
-            />
-          </div>
-          <StatRow
-            label={t("crypto.netIfSold")}
-            value={summary.solCostUsdw > 0
-              ? <>{solNetIfSoldCop >= 0 ? "+" : ""}<Money amount={solNetIfSoldCop} /> ({solNetIfSoldPct >= 0 ? "+" : ""}{solNetIfSoldPct.toFixed(2)}%)</>
-              : "—"}
-            valueColor={solNetIfSoldCop >= 0 ? "#059669" : "#dc2626"}
-          />
+          {cryptoView === "cop" ? (
+            <>
+              <StatRow
+                label={t("crypto.gainLossCop")}
+                value={summary.solCostUsdw > 0
+                  ? <>{summary.solGainCop >= 0 ? "+" : ""}<Money amount={summary.solGainCop} /></>
+                  : "—"}
+                valueColor={summary.solGainCop >= 0 ? "#059669" : "#dc2626"}
+              />
+              <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", fontSize: 13, alignItems: "center" }}>
+                <span style={{ color: "#6b7280" }}>
+                  {t("crypto.sellCommission")} <span style={{ color: "#9ca3af" }}>{t("crypto.defaultPct", { pct: (commissionRate * 100).toFixed(2) })}</span>
+                </span>
+                <EditableCell
+                  value={solSellCommission}
+                  edited={(settings?.solSellCommission ?? 0) > 0}
+                  onChange={v => updateSolSellCommMut.mutate(v)}
+                />
+              </div>
+              <StatRow
+                label={t("crypto.netIfSold")}
+                value={summary.solCostUsdw > 0
+                  ? <>{solNetIfSoldCop >= 0 ? "+" : ""}<Money amount={solNetIfSoldCop} /> ({solNetIfSoldPct >= 0 ? "+" : ""}{solNetIfSoldPct.toFixed(2)}%)</>
+                  : "—"}
+                valueColor={solNetIfSoldCop >= 0 ? "#059669" : "#dc2626"}
+              />
+            </>
+          ) : (
+            <>
+              <StatRow
+                label={t("crypto.gainLossUsd")}
+                value={summary.solCostUsdw > 0
+                  ? <>{summary.solGainUsd >= 0 ? "+" : ""}<Money amount={summary.solGainUsd} currency="USD" /></>
+                  : "—"}
+                valueColor={summary.solGainUsd >= 0 ? "#059669" : "#dc2626"}
+              />
+              <StatRow
+                label={t("crypto.netIfSoldUsd")}
+                value={summary.solCostUsdw > 0
+                  ? <>{solNetIfSoldUsd >= 0 ? "+" : ""}<Money amount={solNetIfSoldUsd} currency="USD" /> ({solNetIfSoldUsdPct >= 0 ? "+" : ""}{solNetIfSoldUsdPct.toFixed(2)}%)</>
+                  : "—"}
+                valueColor={solNetIfSoldUsd >= 0 ? "#059669" : "#dc2626"}
+              />
+              <div style={{ fontSize: 11, color: "#9ca3af", textAlign: "right", marginTop: -4 }}>
+                {t("crypto.sellCommission")}: <Money amount={solSellCommissionUsd} currency="USD" /> ({t("crypto.editInCopView")})
+              </div>
+            </>
+          )}
           <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", fontSize: 13, alignItems: "center" }}>
             <span style={{ color: "#6b7280" }}>{t("crypto.targetGrowthLabel")}</span>
             <TargetPercentEditableCell value={settings?.solTargetGrowthPct ?? null} onChange={v => updateSolTargetMut.mutate(v)} />
           </div>
 
           <SectionLabel>{t("crypto.realizedTitle")}</SectionLabel>
-          <StatRow
-            label={t("crypto.realizedGainUsd")}
-            value={solSales.length > 0
-              ? <>{summary.solRealizedGainUsdw >= 0 ? "+" : ""}<Money amount={summary.solRealizedGainUsdw} currency="USDW" /></>
-              : "—"}
-            valueColor={summary.solRealizedGainUsdw >= 0 ? "#059669" : "#dc2626"}
-          />
-          <StatRow
-            label={t("crypto.realizedGainCop")}
-            value={solSales.length > 0
-              ? <>{summary.solRealizedGainCop >= 0 ? "+" : ""}<Money amount={summary.solRealizedGainCop} /></>
-              : "—"}
-            valueColor={summary.solRealizedGainCop >= 0 ? "#059669" : "#dc2626"}
-          />
+          {cryptoView === "cop" ? (
+            <StatRow
+              label={t("crypto.realizedGainCop")}
+              value={solSales.length > 0
+                ? <>{summary.solRealizedGainCop >= 0 ? "+" : ""}<Money amount={summary.solRealizedGainCop} /></>
+                : "—"}
+              valueColor={summary.solRealizedGainCop >= 0 ? "#059669" : "#dc2626"}
+            />
+          ) : (
+            <StatRow
+              label={t("crypto.realizedGainUsd")}
+              value={solSales.length > 0
+                ? <>{summary.solRealizedGainUsdw >= 0 ? "+" : ""}<Money amount={summary.solRealizedGainUsdw} currency="USDW" /></>
+                : "—"}
+              valueColor={summary.solRealizedGainUsdw >= 0 ? "#059669" : "#dc2626"}
+            />
+          )}
         </div>
       </div>
 
