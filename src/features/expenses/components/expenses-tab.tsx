@@ -32,6 +32,82 @@ function daysInMonth(month: number, year: number) {
   return new Date(year, month + 1, 0).getDate();
 }
 
+/** This month's budget vs. actual, rolled up by category — the forward-looking counterpart to
+ * the per-row budget column already in ActiveMonthTable, which only compares retrospectively,
+ * row by row. Only categories with at least one budgeted (monthlyBudget > 0) item are shown. */
+function BudgetProgressSection({ month, year, items, catById, records }: {
+  month: number; year: number; items: ExpenseItem[]; catById: Record<string, Category>; records: ExpenseRecord[];
+}) {
+  const { t } = useTranslation();
+  const { data: cardInstallments = [] } = useCardInstallments();
+
+  const rows = useMemo(() => {
+    const byCat: Record<string, { budget: number; actual: number }> = {};
+    items.forEach(it => {
+      if (it.excludeFromTotal) return;
+      const budget = effectiveBudget(it, month, year);
+      if (budget <= 0) return;
+      const catId = it.categoryId;
+      (byCat[catId] ??= { budget: 0, actual: 0 }).budget += budget;
+    });
+    records.forEach(r => {
+      const it = items.find(i => i.id === r.itemId);
+      if (!it || it.excludeFromTotal) return;
+      const entry = byCat[it.categoryId];
+      if (entry) entry.actual += r.realValue;
+    });
+    cardInstallments.forEach(ci => {
+      if (!ci.categoryId) return;
+      const entry = byCat[ci.categoryId];
+      if (!entry) return;
+      entry.actual += installmentAmountAt(ci, month, year);
+    });
+    return Object.entries(byCat)
+      .map(([catId, v]) => ({ catId, name: catById[catId]?.name ?? "—", color: catById[catId]?.color ?? "#9ca3af", ...v }))
+      .filter(r => r.budget > 0)
+      .sort((a, b) => (b.actual / b.budget) - (a.actual / a.budget));
+  }, [items, records, cardInstallments, catById, month, year]);
+
+  if (rows.length === 0) return null;
+
+  const totalBudget = rows.reduce((s, r) => s + r.budget, 0);
+  const totalActual = rows.reduce((s, r) => s + r.actual, 0);
+
+  return (
+    <div style={{ background: "#fff", borderRadius: 12, padding: 16, boxShadow: "0 1px 4px #0001", marginBottom: 14 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 12 }}>
+        <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700 }}>{t("expenses.budgetProgressTitle")}</h3>
+        <span style={{ fontSize: 12, color: "#6b7280" }}>
+          {fmtMoney(totalActual, "COP")} {t("expenses.budgetProgressOf")} {fmtMoney(totalBudget, "COP")}
+        </span>
+      </div>
+      <div style={{ display: "grid", gap: 10 }}>
+        {rows.map(r => {
+          const pct = r.budget > 0 ? (r.actual / r.budget) * 100 : 0;
+          const barColor = pct > 100 ? "#dc2626" : pct >= 80 ? "#d97706" : "#059669";
+          return (
+            <div key={r.catId}>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 3 }}>
+                <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <span style={{ width: 8, height: 8, borderRadius: 2, background: r.color, display: "inline-block" }} />
+                  {r.name}
+                </span>
+                <span style={{ color: "#6b7280" }}>
+                  {fmtMoney(r.actual, "COP")} / {fmtMoney(r.budget, "COP")}
+                  <strong style={{ color: barColor, marginLeft: 6 }}>{pct.toFixed(0)}%</strong>
+                </span>
+              </div>
+              <div style={{ height: 7, borderRadius: 4, background: "#f3f4f6", overflow: "hidden" }}>
+                <div style={{ height: "100%", width: `${Math.min(100, pct)}%`, background: barColor, borderRadius: 4 }} />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ─── Add-record form ─────────────────────────────────────────────────────────
 
 function AddRecordForm({
@@ -955,6 +1031,9 @@ export default function ExpensesTab() {
           </select>
         </div>
       </div>
+
+      {/* ── Budget progress (this month) ── */}
+      <BudgetProgressSection month={expenseMonth} year={expenseYear} items={dbItems} catById={catById} records={monthRecords} />
 
       {/* ── Recordatorios ── */}
       <RemindersSection month={expenseMonth} year={expenseYear} items={dbItems} catById={catById} records={monthRecords} />

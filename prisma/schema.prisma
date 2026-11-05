@@ -41,6 +41,7 @@ model User {
   mortgages              Mortgage[]
   mortgagePayments       MortgagePayment[]
   cardInstallments       CardInstallment[]
+  goals                  Goal[]
 }
 
 model Category {
@@ -423,4 +424,20 @@ model MortgagePayment {
   userId           String
   mortgage         Mortgage @relation(fields: [mortgageId], references: [id], onDelete: Cascade)
   user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Goal {
+  id           String    @id @default(uuid())
+  name         String
+  targetAmount Int
+  targetDate   DateTime?
+  // What this goal's progress is measured against: NET_WORTH and INVESTMENTS_VALUE are
+  // auto-computed from existing data (no manual entry needed); CUSTOM is a value the user
+  // updates themselves (e.g. a savings goal with no dedicated tracker elsewhere in the app).
+  metric       String    @default("CUSTOM")
+  currentValue Int?
+  notes        String    @default("")
+  createdAt    DateTime  @default(now())
+  userId       String
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
   ComposedChart, Area, Bar, Line, PieChart, Pie, Cell,
   BarChart, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
@@ -27,12 +27,19 @@ import {
   useCryptoSettings,
   useCardInstallments,
   useMortgages,
+  useGoals,
+  useAddGoal,
+  useUpdateGoal,
+  useDeleteGoal,
+  type Goal,
+  type GoalMetric,
   effectiveIncomeAmount,
   installmentAmountAt,
 } from "@/hooks/use-finance-data";
 import { useDashboardStore } from "@/stores/dashboard-store";
 import { MONTHS } from "@/lib/constants";
-import { fmt, gainPc } from "@/lib/formatters";
+import { fmt, gainPc, formatCopInput, parse } from "@/lib/formatters";
+import EditableCell from "@/components/ui/editable-cell";
 import Kpi from "@/components/ui/kpi";
 import Badge from "@/components/ui/badge";
 import Money from "@/components/ui/money";
@@ -241,6 +248,7 @@ export default function SummaryTab() {
       <SavingsRateChart rangeData={rangeData} />
 
       <NetWorthSection />
+      <GoalsSection />
       <InvestmentsSummarySection />
       <InvestmentChartsSection />
 
@@ -259,9 +267,9 @@ function absMonthOf(iso: string): number {
  * outstanding mortgage balance — the one number that crosses Expenses' sibling tabs (Debts +
  * Investments) instead of living inside either. The historical line reuses the same per-month
  * valuation approach as investments-tab.tsx's own "Portfolio Evolution" chart, applied here to
- * assets and liabilities together. */
-function NetWorthSection() {
-  const { t } = useTranslation();
+ * assets and liabilities together. Exposed as a hook (not just a component) so GoalsSection can
+ * track a goal against totalAssets/netWorth without recomputing this from scratch. */
+function useNetWorthData() {
   const { data: mortgages = [] } = useMortgages();
   const { data: dbStocks = [] } = useStocks();
   const { data: allTxs = [] } = useStockTransactions();
@@ -399,10 +407,17 @@ function NetWorthSection() {
     return rows;
   }, [mortgages, dbStocks, txByInv, stockSalesByInv, priceSnapByInv, funds, depositGroups, usdwPurchases, btcPurchases, solPurchases, btcSales, solSales, usdwSales, cryptoSnapshots, allTxs]);
 
-  if (mortgages.length === 0 && dbStocks.length === 0 && funds.length === 0 && depositGroups.length === 0
-    && usdwPurchases.length === 0) {
-    return null;
-  }
+  const hasData = mortgages.length > 0 || dbStocks.length > 0 || funds.length > 0 || depositGroups.length > 0
+    || usdwPurchases.length > 0;
+
+  return { totalAssets, totalLiabilities, netWorth, chartData, hasData };
+}
+
+function NetWorthSection() {
+  const { t } = useTranslation();
+  const { totalAssets, totalLiabilities, netWorth, chartData, hasData } = useNetWorthData();
+
+  if (!hasData) return null;
 
   return (
     <div style={{ background: "#fff", borderRadius: 12, padding: 16, boxShadow: "0 1px 4px #0001", marginBottom: 16 }}>
@@ -426,6 +441,168 @@ function NetWorthSection() {
           </ComposedChart>
         </ResponsiveContainer>
       )}
+    </div>
+  );
+}
+
+/** Forward-looking goals (savings/net-worth/investment targets with a progress bar), as opposed
+ * to everything else on this page which is retrospective. NET_WORTH and INVESTMENTS_VALUE goals
+ * track themselves automatically off useNetWorthData(); CUSTOM goals are updated by hand (e.g. a
+ * savings target with no dedicated tracker elsewhere in the app). */
+function GoalsSection() {
+  const { t } = useTranslation();
+  const { data: goals = [] } = useGoals();
+  const addGoal = useAddGoal();
+  const updateGoal = useUpdateGoal();
+  const deleteGoal = useDeleteGoal();
+  const { totalAssets, netWorth } = useNetWorthData();
+  const [showForm, setShowForm] = useState(false);
+
+  const currentValueFor = (goal: Goal): number => {
+    if (goal.metric === "NET_WORTH") return netWorth;
+    if (goal.metric === "INVESTMENTS_VALUE") return totalAssets;
+    return goal.currentValue ?? 0;
+  };
+
+  return (
+    <div style={{ background: "#fff", borderRadius: 12, padding: 16, boxShadow: "0 1px 4px #0001", marginBottom: 16 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+        <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700 }}>{t("summary.goalsTitle")}</h3>
+        {!showForm && (
+          <button onClick={() => setShowForm(true)}
+            style={{ padding: "5px 12px", borderRadius: 8, border: "none", cursor: "pointer", background: "#7c3aed", color: "#fff", fontWeight: 600, fontSize: 12 }}>
+            {t("summary.addGoal")}
+          </button>
+        )}
+      </div>
+
+      {showForm && (
+        <GoalForm
+          onSave={async (data) => { await addGoal.mutateAsync(data); setShowForm(false); }}
+          onCancel={() => setShowForm(false)}
+          loading={addGoal.isPending}
+        />
+      )}
+
+      {goals.length === 0 ? (
+        <div style={{ padding: "16px 0", textAlign: "center", color: "#9ca3af", fontSize: 13 }}>{t("summary.noGoalsYet")}</div>
+      ) : (
+        <div style={{ display: "grid", gap: 12 }}>
+          {goals.map(goal => {
+            const current = currentValueFor(goal);
+            const pct = goal.targetAmount > 0 ? Math.min(100, Math.max(0, (current / goal.targetAmount) * 100)) : 0;
+            const reached = current >= goal.targetAmount;
+            return (
+              <div key={goal.id} style={{ border: "1px solid #e5e7eb", borderRadius: 10, padding: 12 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6 }}>
+                  <div>
+                    <span style={{ fontWeight: 700, fontSize: 13, color: "#1f2937" }}>{goal.name}</span>
+                    {goal.targetDate && (
+                      <span style={{ fontSize: 11, color: "#9ca3af", marginLeft: 8 }}>
+                        {t("summary.goalBy")} {new Date(goal.targetDate).toLocaleDateString("es-CO", { day: "2-digit", month: "short", year: "numeric" })}
+                      </span>
+                    )}
+                  </div>
+                  <button onClick={() => deleteGoal.mutate(goal.id)}
+                    style={{ background: "none", border: "none", cursor: "pointer", color: "#d1d5db", fontSize: 11 }}>✕</button>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 4, color: "#6b7280" }}>
+                  <span>
+                    {goal.metric === "CUSTOM" ? (
+                      <EditableCell value={current} edited onChange={v => updateGoal.mutate({ id: goal.id, currentValue: v })} />
+                    ) : (
+                      <Money amount={current} />
+                    )}
+                    {" "}{t("summary.goalOf")} <Money amount={goal.targetAmount} />
+                  </span>
+                  <span style={{ fontWeight: 700, color: reached ? "#059669" : "#6366f1" }}>{pct.toFixed(0)}%</span>
+                </div>
+                <div style={{ height: 8, borderRadius: 4, background: "#f3f4f6", overflow: "hidden" }}>
+                  <div style={{ height: "100%", width: `${pct}%`, background: reached ? "#059669" : "#6366f1", borderRadius: 4 }} />
+                </div>
+                <div style={{ fontSize: 10, color: "#9ca3af", marginTop: 4 }}>
+                  {goal.metric === "NET_WORTH" ? t("summary.goalMetricNetWorth")
+                    : goal.metric === "INVESTMENTS_VALUE" ? t("summary.goalMetricInvestments")
+                    : t("summary.goalMetricCustom")}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function GoalForm({ onSave, onCancel, loading }: {
+  onSave: (data: { name: string; targetAmount: number; targetDate?: string | null; metric: GoalMetric; currentValue?: number | null }) => void;
+  onCancel: () => void;
+  loading: boolean;
+}) {
+  const { t } = useTranslation();
+  const [name, setName] = useState("");
+  const [targetAmount, setTargetAmount] = useState("");
+  const [targetDate, setTargetDate] = useState("");
+  const [metric, setMetric] = useState<GoalMetric>("CUSTOM");
+  const [currentValue, setCurrentValue] = useState("");
+
+  function handleSubmit() {
+    const amount = parse(targetAmount);
+    if (!name.trim() || !amount) return;
+    onSave({
+      name: name.trim(),
+      targetAmount: amount,
+      targetDate: targetDate || null,
+      metric,
+      currentValue: metric === "CUSTOM" ? (parse(currentValue) || 0) : undefined,
+    });
+  }
+
+  return (
+    <div style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 8, padding: 12, marginBottom: 12 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr", gap: 10, marginBottom: 10 }}>
+        <div>
+          <label style={{ fontSize: 11, color: "#6b7280", display: "block" }}>{t("summary.goalNameLabel")}</label>
+          <input value={name} onChange={e => setName(e.target.value)} placeholder={t("summary.goalNamePlaceholder")}
+            style={{ width: "100%", padding: "6px 8px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 12, boxSizing: "border-box" }} />
+        </div>
+        <div>
+          <label style={{ fontSize: 11, color: "#6b7280", display: "block" }}>{t("summary.goalTargetLabel")}</label>
+          <input value={targetAmount} onChange={e => setTargetAmount(formatCopInput(e.target.value))} placeholder="10.000.000"
+            style={{ width: "100%", padding: "6px 8px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 12, boxSizing: "border-box" }} />
+        </div>
+        <div>
+          <label style={{ fontSize: 11, color: "#6b7280", display: "block" }}>{t("summary.goalDateLabel")}</label>
+          <input type="date" value={targetDate} onChange={e => setTargetDate(e.target.value)}
+            style={{ width: "100%", padding: "6px 8px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 12, boxSizing: "border-box" }} />
+        </div>
+        <div>
+          <label style={{ fontSize: 11, color: "#6b7280", display: "block" }}>{t("summary.goalMetricLabel")}</label>
+          <select value={metric} onChange={e => setMetric(e.target.value as GoalMetric)}
+            style={{ width: "100%", padding: "6px 8px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 12 }}>
+            <option value="CUSTOM">{t("summary.goalMetricCustom")}</option>
+            <option value="NET_WORTH">{t("summary.goalMetricNetWorth")}</option>
+            <option value="INVESTMENTS_VALUE">{t("summary.goalMetricInvestments")}</option>
+          </select>
+        </div>
+      </div>
+      {metric === "CUSTOM" && (
+        <div style={{ marginBottom: 10, maxWidth: 220 }}>
+          <label style={{ fontSize: 11, color: "#6b7280", display: "block" }}>{t("summary.goalStartingValueLabel")}</label>
+          <input value={currentValue} onChange={e => setCurrentValue(formatCopInput(e.target.value))} placeholder="0"
+            style={{ width: "100%", padding: "6px 8px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 12, boxSizing: "border-box" }} />
+        </div>
+      )}
+      <div style={{ display: "flex", gap: 8 }}>
+        <button onClick={handleSubmit} disabled={loading}
+          style={{ padding: "6px 14px", borderRadius: 8, border: "none", cursor: "pointer", background: "#7c3aed", color: "#fff", fontWeight: 600, fontSize: 12, opacity: loading ? 0.6 : 1 }}>
+          {loading ? t("summary.saving") : t("summary.save")}
+        </button>
+        <button onClick={onCancel}
+          style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid #d1d5db", cursor: "pointer", background: "#fff", color: "#374151", fontWeight: 600, fontSize: 12 }}>
+          {t("summary.cancel")}
+        </button>
+      </div>
     </div>
   );
 }

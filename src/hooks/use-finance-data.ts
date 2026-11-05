@@ -117,6 +117,19 @@ export interface CardInstallment {
   createdAt: string;
 }
 
+export type GoalMetric = "NET_WORTH" | "INVESTMENTS_VALUE" | "CUSTOM";
+
+export interface Goal {
+  id: string;
+  name: string;
+  targetAmount: number;
+  targetDate: string | null;
+  metric: GoalMetric;
+  currentValue: number | null;
+  notes: string;
+  createdAt: string;
+}
+
 /** Which installment number (1-based) applies at month/year, or null if outside the schedule */
 export function installmentNumberAt(ci: CardInstallment, month: number, year: number): number | null {
   const idx = (year - ci.startYear) * 12 + (month - ci.startMonth);
@@ -236,6 +249,39 @@ export function useInvestmentTypes() {
   return useQuery<InvestmentType[]>({
     queryKey: ["investment-types"],
     queryFn: () => get("/api/investment-types"),
+  });
+}
+
+export function useGoals() {
+  return useQuery<Goal[]>({
+    queryKey: ["goals"],
+    queryFn: () => get("/api/goals"),
+  });
+}
+
+export function useAddGoal() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { name: string; targetAmount: number; targetDate?: string | null; metric?: GoalMetric; currentValue?: number | null; notes?: string }) =>
+      post("/api/goals", data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["goals"] }),
+  });
+}
+
+export function useUpdateGoal() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { id: string; name?: string; targetAmount?: number; targetDate?: string | null; metric?: GoalMetric; currentValue?: number | null; notes?: string }) =>
+      put("/api/goals", data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["goals"] }),
+  });
+}
+
+export function useDeleteGoal() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => del(`/api/goals?id=${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["goals"] }),
   });
 }
 
