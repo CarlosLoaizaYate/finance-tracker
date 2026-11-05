@@ -543,6 +543,21 @@ export default function CryptoTab() {
   const netIfSold = totalGain - sellCommission;
   const netIfSoldPct = totalInvested > 0 ? (netIfSold / totalInvested) * 100 : 0;
 
+  // Per-asset "net if sold" — the same idea as the global one above, but applied to each
+  // position's own current value, so each card shows what you'd actually walk away with after
+  // the estimated sell commission (vs. the raw unrealized gain, which ignores that cost).
+  const usdwSellCommission = Math.round(summary.usdValueCop * commissionRate);
+  const usdwNetIfSoldCop = summary.usdwGainCop - usdwSellCommission;
+  const usdwNetIfSoldPct = summary.usdwCostBasisCop > 0 ? (usdwNetIfSoldCop / summary.usdwCostBasisCop) * 100 : 0;
+
+  const btcSellCommission = Math.round(summary.btcValueCop * commissionRate);
+  const btcNetIfSoldCop = summary.btcGainCop - btcSellCommission;
+  const btcNetIfSoldPct = summary.btcCostBasisCop > 0 ? (btcNetIfSoldCop / summary.btcCostBasisCop) * 100 : 0;
+
+  const solSellCommission = Math.round(summary.solValueCop * commissionRate);
+  const solNetIfSoldCop = summary.solGainCop - solSellCommission;
+  const solNetIfSoldPct = summary.solCostBasisCop > 0 ? (solNetIfSoldCop / summary.solCostBasisCop) * 100 : 0;
+
   const latestSnapIso = summary.latestSnapshot
     ? `${summary.latestSnapshot.year}-${String(summary.latestSnapshot.month).padStart(2, "0")}-${String(summary.latestSnapshot.day).padStart(2, "0")}`
     : null;
@@ -605,10 +620,14 @@ export default function CryptoTab() {
           <StatRow label={t("crypto.avgBuyRatePerUsd")} value={summary.avgHeldRate > 0 ? <Money amount={summary.avgHeldRate} /> : "—"} />
 
           <SectionLabel>{t("crypto.performance")}</SectionLabel>
+          <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", fontSize: 13, alignItems: "center" }}>
+            <span style={{ color: "#6b7280" }}>{t("crypto.growthSincePurchase")}</span>
+            <GrowthWithTarget pct={summary.usdGrowthPct} hasData={summary.avgHeldRate > 0} target={null} />
+          </div>
           <StatRow
             label={t("crypto.currencyEffectCop")}
             value={summary.avgHeldRate > 0
-              ? <>{summary.usdwFxEffectCop >= 0 ? "+" : ""}<Money amount={summary.usdwFxEffectCop} /> ({summary.usdGrowthPct >= 0 ? "+" : ""}{summary.usdGrowthPct.toFixed(2)}%)</>
+              ? <>{summary.usdwFxEffectCop >= 0 ? "+" : ""}<Money amount={summary.usdwFxEffectCop} /></>
               : "—"}
             valueColor={summary.usdwFxEffectCop >= 0 ? "#059669" : "#dc2626"}
           />
@@ -625,6 +644,13 @@ export default function CryptoTab() {
               ? <>{summary.usdwGainCop >= 0 ? "+" : ""}<Money amount={summary.usdwGainCop} /></>
               : "—"}
             valueColor={summary.usdwGainCop >= 0 ? "#059669" : "#dc2626"}
+          />
+          <StatRow
+            label={t("crypto.netIfSold")}
+            value={summary.usdwHeldDerived > 0 || summary.hasUsdwBalanceOverride
+              ? <>{usdwNetIfSoldCop >= 0 ? "+" : ""}<Money amount={usdwNetIfSoldCop} /> ({usdwNetIfSoldPct >= 0 ? "+" : ""}{usdwNetIfSoldPct.toFixed(2)}%)</>
+              : "—"}
+            valueColor={usdwNetIfSoldCop >= 0 ? "#059669" : "#dc2626"}
           />
 
           <SectionLabel>{t("crypto.realizedTitle")}</SectionLabel>
@@ -664,6 +690,13 @@ export default function CryptoTab() {
               ? <>{summary.btcGainCop >= 0 ? "+" : ""}<Money amount={summary.btcGainCop} /></>
               : "—"}
             valueColor={summary.btcGainCop >= 0 ? "#059669" : "#dc2626"}
+          />
+          <StatRow
+            label={t("crypto.netIfSold")}
+            value={summary.btcCostUsdw > 0
+              ? <>{btcNetIfSoldCop >= 0 ? "+" : ""}<Money amount={btcNetIfSoldCop} /> ({btcNetIfSoldPct >= 0 ? "+" : ""}{btcNetIfSoldPct.toFixed(2)}%)</>
+              : "—"}
+            valueColor={btcNetIfSoldCop >= 0 ? "#059669" : "#dc2626"}
           />
           <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", fontSize: 13, alignItems: "center" }}>
             <span style={{ color: "#6b7280" }}>{t("crypto.targetGrowthLabel")}</span>
@@ -714,6 +747,13 @@ export default function CryptoTab() {
               ? <>{summary.solGainCop >= 0 ? "+" : ""}<Money amount={summary.solGainCop} /></>
               : "—"}
             valueColor={summary.solGainCop >= 0 ? "#059669" : "#dc2626"}
+          />
+          <StatRow
+            label={t("crypto.netIfSold")}
+            value={summary.solCostUsdw > 0
+              ? <>{solNetIfSoldCop >= 0 ? "+" : ""}<Money amount={solNetIfSoldCop} /> ({solNetIfSoldPct >= 0 ? "+" : ""}{solNetIfSoldPct.toFixed(2)}%)</>
+              : "—"}
+            valueColor={solNetIfSoldCop >= 0 ? "#059669" : "#dc2626"}
           />
           <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", fontSize: 13, alignItems: "center" }}>
             <span style={{ color: "#6b7280" }}>{t("crypto.targetGrowthLabel")}</span>
