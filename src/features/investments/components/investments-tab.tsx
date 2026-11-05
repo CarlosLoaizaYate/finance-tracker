@@ -232,6 +232,7 @@ interface Stock {
   type: { id: string; name: string };
   color: string;
   createdAt: string;
+  currency: "COP" | "USD";
   investedCapital: number;
   sellCommission: number;
   active: boolean;
@@ -318,6 +319,18 @@ function SummaryContent({
     return map;
   }, [allPriceSnaps]);
 
+  const stockById = useMemo(() => {
+    const map: Record<string, Stock> = {};
+    dbStocks.forEach(s => { map[s.id] = s; });
+    return map;
+  }, [dbStocks]);
+
+  // Computed before stockItems so USD-denominated stocks can be converted to COP at this rate.
+  const cryptoSummary = useMemo(
+    () => computeCryptoSummary(usdwPurchases, btcPurchases, cryptoSnapshots, solPurchases, btcSales, solSales, usdwSales),
+    [usdwPurchases, btcPurchases, cryptoSnapshots, solPurchases, btcSales, solSales, usdwSales]
+  );
+
   const stockItems = useMemo((): CategoryItem[] => {
     return dbStocks
       .filter(inv => txByInv[inv.id]?.length)
@@ -325,10 +338,16 @@ function SummaryContent({
         const txs = txByInv[inv.id];
         const { heldShares: totalShares, costBasisHeld: totalCost } = computeStockPosition(txs, stockSalesByInv[inv.id] ?? []);
         const latest = (priceSnapByInv[inv.id] ?? []).sort((a, b) => b.year - a.year || b.month - a.month)[0];
-        const currentValue = latest ? latest.pricePerShare * totalShares : null;
-        return { id: inv.id, name: inv.name, color: inv.color, label: inv.type?.name, invested: totalCost, currentValue, sellCommission: inv.sellCommission };
+        const currentValueNative = latest ? latest.pricePerShare * totalShares : null;
+        const fx = inv.currency === "USD" ? cryptoSummary.usdCopRateNow : 1;
+        return {
+          id: inv.id, name: inv.name, color: inv.color, label: inv.type?.name,
+          invested: totalCost * fx,
+          currentValue: currentValueNative != null ? currentValueNative * fx : null,
+          sellCommission: inv.sellCommission * fx,
+        };
       });
-  }, [dbStocks, txByInv, stockSalesByInv, priceSnapByInv]);
+  }, [dbStocks, txByInv, stockSalesByInv, priceSnapByInv, cryptoSummary]);
 
   const fundItems = useMemo((): CategoryItem[] =>
     funds.map(f => {
@@ -337,11 +356,6 @@ function SummaryContent({
       const currentValue = sorted[0]?.currentValue ?? null;
       return { id: f.id, name: f.name, color: f.color, label: f.type?.name, invested, currentValue };
     }), [funds]);
-
-  const cryptoSummary = useMemo(
-    () => computeCryptoSummary(usdwPurchases, btcPurchases, cryptoSnapshots, solPurchases, btcSales, solSales, usdwSales),
-    [usdwPurchases, btcPurchases, cryptoSnapshots, solPurchases, btcSales, solSales, usdwSales]
-  );
 
   const cryptoItems = useMemo((): CategoryItem[] => {
     if (usdwPurchases.length === 0 && btcPurchases.length === 0 && solPurchases.length === 0) return [];
@@ -472,7 +486,14 @@ function SummaryContent({
         row[inv.id] = inv.invested;
       });
 
-      // Stocks: priceSnap months are 1-indexed → convert with -1
+      // Stocks: priceSnap months are 1-indexed → convert with -1. USD-denominated stocks are
+      // converted to COP at the USD/COP rate in effect that month (from crypto snapshots).
+      const relevantCryptoSnaps = cryptoSnapshots
+        .filter(s => s.year * 12 + (s.month - 1) <= i)
+        .sort((a, b) => (b.year * 12 + b.month) - (a.year * 12 + a.month));
+      const usdCopRateAtI = relevantCryptoSnaps[0]?.usdCopRate
+        ?? [...cryptoSnapshots].sort((a, b) => (a.year * 12 + a.month) - (b.year * 12 + b.month))[0]?.usdCopRate
+        ?? 0;
       let stocksTotal = 0;
       Object.entries(txByInv).forEach(([invId, txs]) => {
         const relevantTxs = txs.filter(tx => {
@@ -485,11 +506,12 @@ function SummaryContent({
           return d.getUTCFullYear() * 12 + d.getUTCMonth() <= i;
         });
         const { heldShares: totalShares, costBasisHeld: stockCost } = computeStockPosition(relevantTxs, relevantSales);
-        ti += stockCost;
+        const fx = stockById[invId]?.currency === "USD" ? usdCopRateAtI : 1;
+        ti += stockCost * fx;
         const relevantPriceSnaps = (priceSnapByInv[invId] ?? [])
           .filter(s => s.year * 12 + (s.month - 1) <= i)
           .sort((a, b) => (b.year * 12 + b.month) - (a.year * 12 + a.month));
-        const val = relevantPriceSnaps[0] ? relevantPriceSnaps[0].pricePerShare * totalShares : stockCost;
+        const val = (relevantPriceSnaps[0] ? relevantPriceSnaps[0].pricePerShare * totalShares : stockCost) * fx;
         tv += val;
         stocksTotal += val;
         row[`stock_${invId}`] = val;
@@ -579,7 +601,7 @@ function SummaryContent({
       data.push(row);
     }
     return data;
-  }, [invs, chartFrom, chartTo, txByInv, stockSalesByInv, priceSnapByInv, funds, depositGroups, usdwPurchases, btcPurchases, solPurchases, btcSales, solSales, usdwSales, cryptoSnapshots]);
+  }, [invs, chartFrom, chartTo, txByInv, stockSalesByInv, priceSnapByInv, funds, depositGroups, usdwPurchases, btcPurchases, solPurchases, btcSales, solSales, usdwSales, cryptoSnapshots, stockById]);
 
   return (
     <>

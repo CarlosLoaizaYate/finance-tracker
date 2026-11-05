@@ -8,6 +8,7 @@ const createSchema = z.object({
   name: z.string().min(1),
   typeId: z.string().min(1),
   color: z.string().min(1),
+  currency: z.enum(["COP", "USD"]).optional(),
   investedCapital: z.number().optional(),
   sellCommission: z.number().optional(),
 });
@@ -44,6 +45,7 @@ export async function POST(req: NextRequest) {
         name: body.name,
         typeId: body.typeId,
         color: body.color,
+        currency: body.currency ?? "COP",
         investedCapital: body.investedCapital ?? 0,
         sellCommission: body.sellCommission ?? 14875,
         userId: user.id,

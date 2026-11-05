@@ -158,6 +158,7 @@ export interface Stock {
   type: InvestmentType;
   color: string;
   createdAt: string;
+  currency: "COP" | "USD";
   investedCapital: number;
   sellCommission: number;
   active: boolean;
@@ -350,7 +351,7 @@ export function useDeleteCardInstallment() {
 export function useAddStock() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: { name: string; typeId: string; color: string; investedCapital?: number }) =>
+    mutationFn: (data: { name: string; typeId: string; color: string; currency?: "COP" | "USD"; investedCapital?: number }) =>
       post("/api/stocks", data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["stocks"] }),
   });

@@ -21,8 +21,15 @@ import {
     type StockSale,
     type StockPriceSnapshot,
 } from "@/hooks/use-finance-data";
-import Money from "@/components/ui/money";
+import MoneyBase from "@/components/ui/money";
 import { useTranslation } from "@/hooks/use-translation";
+
+/** Stock-currency-aware wrapper: renders with the given stock's currency (COP or USD) instead of
+ * always defaulting to COP, so a component handling a single stock can shadow this with its own
+ * `currency` in scope and every plain `<Money amount={x} />` call below it just works. */
+function Money({ amount, currency = "COP" }: { amount: number; currency?: "COP" | "USD" }) {
+    return <MoneyBase amount={amount} currency={currency} />;
+}
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const COLORS = ["#7c3aed", "#2563eb", "#059669", "#dc2626", "#d97706", "#0891b2", "#db2777", "#be185d", "#065f46", "#92400e"];
@@ -111,11 +118,11 @@ export function computeStockPosition(txs: StockTransaction[], sales: StockSale[]
     };
 }
 
-function GainBadge({ gain, pct }: { gain: number; pct: number }) {
+function GainBadge({ gain, pct, currency = "COP" }: { gain: number; pct: number; currency?: "COP" | "USD" }) {
     const positive = gain >= 0;
     return (
         <span style={{ color: positive ? "#059669" : "#dc2626", fontWeight: 700, fontSize: 12 }}>
-            {positive ? "+" : ""}{<Money amount={gain} />} ({positive ? "+" : ""}{pct.toFixed(2)}%)
+            {positive ? "+" : ""}{<MoneyBase amount={gain} currency={currency} />} ({positive ? "+" : ""}{pct.toFixed(2)}%)
         </span>
     );
 }
@@ -132,6 +139,7 @@ function NewStockForm({ onClose }: { onClose: () => void }) {
     const [form, setForm] = useState({
         name: "",
         color: COLORS[0],
+        currency: "COP" as "COP" | "USD",
         typeId: "",
         quantity: "",
         priceUnit: "",
@@ -139,6 +147,8 @@ function NewStockForm({ onClose }: { onClose: () => void }) {
         transactionDate: now.toISOString().split("T")[0],
         notes: "",
     });
+    const currency = form.currency;
+    const Money = ({ amount }: { amount: number }) => <MoneyBase amount={amount} currency={currency} />;
 
     const qty = parseInt(form.quantity) || 0;
     const price = parseFloat(form.priceUnit) || 0;
@@ -155,13 +165,14 @@ function NewStockForm({ onClose }: { onClose: () => void }) {
                 name: form.name.trim(),
                 typeId: form.typeId,
                 color: form.color,
+                currency: form.currency,
             }) as Stock;
 
             await addTransaction.mutateAsync({
                 investmentId: inv.id,
                 quantity: qty,
-                priceUnit: Math.round(price),
-                commission: Math.round(commission),
+                priceUnit: price,
+                commission: commission,
                 transactionDate: form.transactionDate,
                 notes: form.notes,
             });
@@ -209,6 +220,21 @@ function NewStockForm({ onClose }: { onClose: () => void }) {
                         ))}
                     </div>
                 </div>
+                <div>
+                    <label style={{ fontSize: 11, color: "#6b7280", display: "block" }}>{t("stockTransactions.currencyLabel")}</label>
+                    <div style={{ display: "inline-flex", border: "1px solid #d1d5db", borderRadius: 6, overflow: "hidden" }}>
+                        {(["COP", "USD"] as const).map((c) => (
+                            <button key={c} onClick={() => setForm({ ...form, currency: c })}
+                                style={{
+                                    padding: "6px 12px", fontSize: 12, fontWeight: 600, border: "none", cursor: "pointer",
+                                    background: form.currency === c ? "#7c3aed" : "transparent",
+                                    color: form.currency === c ? "#fff" : "#6b7280",
+                                }}>
+                                {c}
+                            </button>
+                        ))}
+                    </div>
+                </div>
             </div>
             <div style={{ marginTop: 10, fontSize: 11, color: "#6b7280", fontWeight: 600 }}>{t("stockTransactions.initialPurchase")}</div>
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "end", marginTop: 6 }}>
@@ -219,12 +245,12 @@ function NewStockForm({ onClose }: { onClose: () => void }) {
                 </div>
                 <div>
                     <label style={{ fontSize: 11, color: "#6b7280", display: "block" }}>{t("stockTransactions.priceShareLabel")}</label>
-                    <input type="number" value={form.priceUnit} onChange={(e) => setForm({ ...form, priceUnit: e.target.value })}
+                    <input type="number" step="any" value={form.priceUnit} onChange={(e) => setForm({ ...form, priceUnit: e.target.value })}
                         placeholder="2500" style={{ display: "block", padding: "6px 8px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 12, width: 110 }} />
                 </div>
                 <div>
                     <label style={{ fontSize: 11, color: "#6b7280", display: "block" }}>{t("stockTransactions.commissionLabel")}</label>
-                    <input type="number" value={form.commission} onChange={(e) => setForm({ ...form, commission: e.target.value })}
+                    <input type="number" step="any" value={form.commission} onChange={(e) => setForm({ ...form, commission: e.target.value })}
                         placeholder="0" style={{ display: "block", padding: "6px 8px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 12, width: 100 }} />
                 </div>
                 <div>
@@ -259,9 +285,10 @@ function NewStockForm({ onClose }: { onClose: () => void }) {
 
 // ── Add Purchase Form ──────────────────────────────────────────────────
 
-function AddPurchaseForm({ investmentId, onClose }: { investmentId: string; onClose: () => void }) {
+function AddPurchaseForm({ investmentId, currency, onClose }: { investmentId: string; currency: "COP" | "USD"; onClose: () => void }) {
     const { t } = useTranslation();
     const addTransaction = useAddStockTransaction();
+    const Money = ({ amount }: { amount: number }) => <MoneyBase amount={amount} currency={currency} />;
     const [form, setForm] = useState({
         quantity: "",
         priceUnit: "",
@@ -284,8 +311,8 @@ function AddPurchaseForm({ investmentId, onClose }: { investmentId: string; onCl
             await addTransaction.mutateAsync({
                 investmentId,
                 quantity: qty,
-                priceUnit: Math.round(price),
-                commission: Math.round(commission),
+                priceUnit: price,
+                commission: commission,
                 transactionDate: form.transactionDate,
                 notes: form.notes,
             });
@@ -306,12 +333,12 @@ function AddPurchaseForm({ investmentId, onClose }: { investmentId: string; onCl
                 </div>
                 <div>
                     <label style={{ fontSize: 11, color: "#6b7280", display: "block" }}>{t("stockTransactions.priceShareLabel")}</label>
-                    <input type="number" value={form.priceUnit} onChange={(e) => setForm({ ...form, priceUnit: e.target.value })}
+                    <input type="number" step="any" value={form.priceUnit} onChange={(e) => setForm({ ...form, priceUnit: e.target.value })}
                         placeholder="2500" style={{ display: "block", padding: "5px 8px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 12, width: 100 }} />
                 </div>
                 <div>
                     <label style={{ fontSize: 11, color: "#6b7280", display: "block" }}>{t("stockTransactions.commissionLabel")}</label>
-                    <input type="number" value={form.commission} onChange={(e) => setForm({ ...form, commission: e.target.value })}
+                    <input type="number" step="any" value={form.commission} onChange={(e) => setForm({ ...form, commission: e.target.value })}
                         placeholder="0" style={{ display: "block", padding: "5px 8px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 12, width: 90 }} />
                 </div>
                 <div>
@@ -344,9 +371,10 @@ function AddPurchaseForm({ investmentId, onClose }: { investmentId: string; onCl
 
 // ── Add Sale Form ──────────────────────────────────────────────────────
 
-function AddSaleForm({ investmentId, availableShares, onClose }: { investmentId: string; availableShares: number; onClose: () => void }) {
+function AddSaleForm({ investmentId, currency, availableShares, onClose }: { investmentId: string; currency: "COP" | "USD"; availableShares: number; onClose: () => void }) {
     const { t } = useTranslation();
     const addSale = useAddStockSale();
+    const Money = ({ amount }: { amount: number }) => <MoneyBase amount={amount} currency={currency} />;
     const [form, setForm] = useState({
         quantity: "",
         priceUnit: "",
@@ -371,8 +399,8 @@ function AddSaleForm({ investmentId, availableShares, onClose }: { investmentId:
             await addSale.mutateAsync({
                 investmentId,
                 quantity: qty,
-                priceUnit: Math.round(price),
-                commission: Math.round(commission),
+                priceUnit: price,
+                commission: commission,
                 saleDate: form.saleDate,
                 notes: form.notes,
             });
@@ -395,12 +423,12 @@ function AddSaleForm({ investmentId, availableShares, onClose }: { investmentId:
                 </div>
                 <div>
                     <label style={{ fontSize: 11, color: "#6b7280", display: "block" }}>{t("stockTransactions.sellPriceShareLabel")}</label>
-                    <input type="number" value={form.priceUnit} onChange={(e) => setForm({ ...form, priceUnit: e.target.value })}
+                    <input type="number" step="any" value={form.priceUnit} onChange={(e) => setForm({ ...form, priceUnit: e.target.value })}
                         placeholder="2500" style={{ display: "block", padding: "5px 8px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 12, width: 100 }} />
                 </div>
                 <div>
                     <label style={{ fontSize: 11, color: "#6b7280", display: "block" }}>{t("stockTransactions.commissionLabel")}</label>
-                    <input type="number" value={form.commission} onChange={(e) => setForm({ ...form, commission: e.target.value })}
+                    <input type="number" step="any" value={form.commission} onChange={(e) => setForm({ ...form, commission: e.target.value })}
                         placeholder="0" style={{ display: "block", padding: "5px 8px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 12, width: 90 }} />
                 </div>
                 <div>
@@ -438,9 +466,10 @@ function AddSaleForm({ investmentId, availableShares, onClose }: { investmentId:
 
 // ── Add Price Per Share Form ───────────────────────────────────────────
 
-function AddPricePerShareForm({ investmentId, totalShares, totalCost }: { investmentId: string; totalShares: number; totalCost: number }) {
+function AddPricePerShareForm({ investmentId, currency, totalShares, totalCost }: { investmentId: string; currency: "COP" | "USD"; totalShares: number; totalCost: number }) {
     const { t } = useTranslation();
     const upsert = useUpsertStockPriceSnapshot();
+    const Money = ({ amount }: { amount: number }) => <MoneyBase amount={amount} currency={currency} />;
     const now = new Date();
     const [month, setMonth] = useState(now.getMonth() + 1);
     const [year, setYear] = useState(now.getFullYear());
@@ -458,7 +487,7 @@ function AddPricePerShareForm({ investmentId, totalShares, totalCost }: { invest
                 investmentId,
                 month,
                 year,
-                pricePerShare: Math.round(pricePerShare),
+                pricePerShare,
             });
             setPrice("");
         } catch (err) {
@@ -484,7 +513,7 @@ function AddPricePerShareForm({ investmentId, totalShares, totalCost }: { invest
                 </div>
                 <div>
                     <label style={{ fontSize: 11, color: "#6b7280", display: "block" }}>{t("stockTransactions.priceShareRequiredLabel")}</label>
-                    <input type="number" value={price} onChange={(e) => setPrice(e.target.value)}
+                    <input type="number" step="any" value={price} onChange={(e) => setPrice(e.target.value)}
                         placeholder="e.g. 3200"
                         style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 12, width: 120 }} />
                 </div>
@@ -497,7 +526,7 @@ function AddPricePerShareForm({ investmentId, totalShares, totalCost }: { invest
                 <div style={{ marginTop: 8, fontSize: 12, display: "flex", gap: 16, flexWrap: "wrap" }}>
                     <span style={{ color: "#6b7280" }}>{t("stockTransactions.currentValueInline")} <strong style={{ color: "#059669" }}>{<Money amount={currentValue} />}</strong></span>
                     <span style={{ color: "#6b7280" }}>{t("stockTransactions.investedInline")} <strong style={{ color: "#1f2937" }}>{<Money amount={totalCost} />}</strong></span>
-                    <span style={{ color: "#6b7280" }}>{t("stockTransactions.gainLossInline")} <GainBadge gain={gain} pct={gainPct} /></span>
+                    <span style={{ color: "#6b7280" }}>{t("stockTransactions.gainLossInline")} <GainBadge gain={gain} pct={gainPct} currency={currency} /></span>
                 </div>
             )}
         </div>
@@ -508,6 +537,8 @@ function AddPricePerShareForm({ investmentId, totalShares, totalCost }: { invest
 
 function StockDetail({ investment, onBack }: { investment: Stock; onBack: () => void }) {
     const { t } = useTranslation();
+    const currency = investment.currency;
+    const Money = ({ amount }: { amount: number }) => <MoneyBase amount={amount} currency={currency} />;
     const { data: transactions = [] } = useStockTransactions(investment.id);
     const { data: sales = [] } = useStockSales(investment.id);
     const { data: priceSnaps = [] } = useStockPriceSnapshots(investment.id);
@@ -553,7 +584,7 @@ function StockDetail({ investment, onBack }: { investment: Stock; onBack: () => 
     const realizedGainPct = totalProceeds > 0 ? (realizedGain / (totalProceeds - realizedGain)) * 100 : 0;
 
     const handleSaveCommission = async () => {
-        const val = parseInt(commissionInput);
+        const val = parseFloat(commissionInput);
         if (isNaN(val) || val < 0) return;
         await updateStock.mutateAsync({ id: investment.id, sellCommission: val });
         setEditingCommission(false);
@@ -608,7 +639,7 @@ function StockDetail({ investment, onBack }: { investment: Stock; onBack: () => 
                     <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 2 }}>{t("stockTransactions.purchaseCommissionInline")} {<Money amount={totalCommissions} />}</div>
                     {sharesGain != null && (
                         <div style={{ fontSize: 12, marginTop: 4 }}>
-                            <GainBadge gain={sharesGain} pct={sharesGainPct} />
+                            <GainBadge gain={sharesGain} pct={sharesGainPct} currency={currency} />
                         </div>
                     )}
                 </div>
@@ -619,7 +650,7 @@ function StockDetail({ investment, onBack }: { investment: Stock; onBack: () => 
                     <div style={{ fontSize: 16, fontWeight: 700, color: "#6366f1" }}>{<Money amount={totalCost} />}</div>
                     {totalGain != null && (
                         <div style={{ fontSize: 12, marginTop: 4 }}>
-                            <GainBadge gain={totalGain} pct={totalGainPct} />
+                            <GainBadge gain={totalGain} pct={totalGainPct} currency={currency} />
                         </div>
                     )}
                 </div>
@@ -659,7 +690,7 @@ function StockDetail({ investment, onBack }: { investment: Stock; onBack: () => 
                                 {netIfSold >= 0 ? "+" : ""}{<Money amount={netIfSold} />}
                             </div>
                             <div style={{ fontSize: 11, marginTop: 2 }}>
-                                <GainBadge gain={netIfSold} pct={netIfSoldPct} />
+                                <GainBadge gain={netIfSold} pct={netIfSoldPct} currency={currency} />
                             </div>
                         </>
                     ) : (
@@ -694,7 +725,7 @@ function StockDetail({ investment, onBack }: { investment: Stock; onBack: () => 
                 </div>
 
                 {showAddPurchase && (
-                    <AddPurchaseForm investmentId={investment.id} onClose={() => setShowAddPurchase(false)} />
+                    <AddPurchaseForm investmentId={investment.id} currency={currency} onClose={() => setShowAddPurchase(false)} />
                 )}
 
                 {latestPrice === 0 && sortedTxs.length > 0 && (
@@ -763,7 +794,7 @@ function StockDetail({ investment, onBack }: { investment: Stock; onBack: () => 
                                             </td>
                                             <td style={{ padding: "8px 10px", textAlign: "right" }}>
                                                 {sharesGainRow != null && sharesGainPctRow != null
-                                                    ? <GainBadge gain={sharesGainRow} pct={sharesGainPctRow} />
+                                                    ? <GainBadge gain={sharesGainRow} pct={sharesGainPctRow} currency={currency} />
                                                     : <span style={{ color: "#9ca3af" }}>—</span>}
                                             </td>
                                             <td style={{ padding: "8px 10px", textAlign: "right", fontWeight: 600, color: "#6366f1" }}>
@@ -771,7 +802,7 @@ function StockDetail({ investment, onBack }: { investment: Stock; onBack: () => 
                                             </td>
                                             <td style={{ padding: "8px 10px", textAlign: "right" }}>
                                                 {gainTotal != null && gainTotalPct != null
-                                                    ? <GainBadge gain={gainTotal} pct={gainTotalPct} />
+                                                    ? <GainBadge gain={gainTotal} pct={gainTotalPct} currency={currency} />
                                                     : <span style={{ color: "#9ca3af" }}>—</span>}
                                             </td>
                                             <td style={{ padding: "8px 10px", textAlign: "right", color: "#059669", fontWeight: 600, background: "#f0fdf4" }}>
@@ -803,7 +834,7 @@ function StockDetail({ investment, onBack }: { investment: Stock; onBack: () => 
                 </div>
 
                 {showAddSale && (
-                    <AddSaleForm investmentId={investment.id} availableShares={totalShares} onClose={() => setShowAddSale(false)} />
+                    <AddSaleForm investmentId={investment.id} currency={currency} availableShares={totalShares} onClose={() => setShowAddSale(false)} />
                 )}
 
                 {sortedSales.length === 0 ? (
@@ -862,7 +893,7 @@ function StockDetail({ investment, onBack }: { investment: Stock; onBack: () => 
             {/* Monthly Value History */}
             <div style={{ background: "#fff", borderRadius: 10, padding: 14, boxShadow: "0 1px 4px #0001" }}>
                 <div style={{ fontWeight: 700, fontSize: 13, color: "#1f2937", marginBottom: 12 }}>{t("stockTransactions.monthlyValueHistoryTitle")}</div>
-                <AddPricePerShareForm investmentId={investment.id} totalShares={totalShares} totalCost={totalCost} />
+                <AddPricePerShareForm investmentId={investment.id} currency={currency} totalShares={totalShares} totalCost={totalCost} />
                 {sortedSnaps.length === 0 ? (
                     <div style={{ textAlign: "center", color: "#9ca3af", padding: 16, fontSize: 13 }}>
                         {t("stockTransactions.noValueEntriesYet")}
@@ -899,7 +930,7 @@ function StockDetail({ investment, onBack }: { investment: Stock; onBack: () => 
                                             {<Money amount={snapCurrentValue} />}
                                         </td>
                                         <td style={{ padding: "8px 10px", textAlign: "right" }}>
-                                            <GainBadge gain={snapGain} pct={snapGainPct} />
+                                            <GainBadge gain={snapGain} pct={snapGainPct} currency={currency} />
                                         </td>
                                         <td style={{ padding: "8px 10px" }}>
                                             <button onClick={() => handleDeleteSnap(snap.id)} disabled={deletePriceSnap.isPending}
@@ -974,6 +1005,8 @@ function StockList({
                         const gainPct = gain != null && totalCost > 0 ? (gain / totalCost) * 100 : 0;
                         const netIfSold = gain !== null ? gain - inv.sellCommission : null;
                         const netIfSoldPct = netIfSold !== null && totalCost > 0 ? (netIfSold / totalCost) * 100 : 0;
+                        const currency = inv.currency;
+                        const Money = ({ amount }: { amount: number }) => <MoneyBase amount={amount} currency={currency} />;
 
                         return (
                             <div key={inv.id} onClick={() => onSelect(inv.id)}
@@ -1013,13 +1046,13 @@ function StockList({
                                     <div>
                                         <div style={{ fontSize: 10, color: "#9ca3af", fontWeight: 600 }}>{t("stockTransactions.statGainLossCaps")}</div>
                                         <div style={{ fontSize: 14 }}>
-                                            {gain != null ? <GainBadge gain={gain} pct={gainPct} /> : "—"}
+                                            {gain != null ? <GainBadge gain={gain} pct={gainPct} currency={currency} /> : "—"}
                                         </div>
                                     </div>
                                     <div style={{ gridColumn: "1 / -1", borderTop: "1px solid #f3f4f6", paddingTop: 8 }}>
                                         <div style={{ fontSize: 10, color: "#dc2626", fontWeight: 600 }}>{t("stockTransactions.statNetIfSold")} <span style={{ color: "#9ca3af", fontWeight: 400 }}>(-{<Money amount={inv.sellCommission} />} {t("stockTransactions.commissionAbbrev")})</span></div>
                                         <div style={{ fontSize: 13 }}>
-                                            {netIfSold != null ? <GainBadge gain={netIfSold} pct={netIfSoldPct} /> : "—"}
+                                            {netIfSold != null ? <GainBadge gain={netIfSold} pct={netIfSoldPct} currency={currency} /> : "—"}
                                         </div>
                                     </div>
                                 </div>

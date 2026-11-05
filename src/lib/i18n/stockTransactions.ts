@@ -12,6 +12,7 @@ export const stockTransactionsEn = {
   notesLabel: "Notes",
   notesPlaceholderOptional: "optional",
   colorLabel: "Color",
+  currencyLabel: "Currency",
   alertFillRequired: "Fill in all required fields",
 
   noTypesFoundPre: "No investment types found. Create one in",
@@ -121,6 +122,7 @@ export const stockTransactionsEs: typeof stockTransactionsEn = {
   notesLabel: "Notas",
   notesPlaceholderOptional: "opcional",
   colorLabel: "Color",
+  currencyLabel: "Moneda",
   alertFillRequired: "Completa todos los campos requeridos",
 
   noTypesFoundPre: "No se encontraron tipos de inversión. Crea uno en",

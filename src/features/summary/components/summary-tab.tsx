@@ -313,7 +313,8 @@ function useNetWorthData() {
       if (txs.length === 0) return;
       const { heldShares, costBasisHeld } = computeStockPosition(txs, stockSalesByInv[inv.id] ?? []);
       const latest = (priceSnapByInv[inv.id] ?? []).sort((a, b) => b.year - a.year || b.month - a.month)[0];
-      total += latest ? latest.pricePerShare * heldShares : costBasisHeld;
+      const valueNative = latest ? latest.pricePerShare * heldShares : costBasisHeld;
+      total += inv.currency === "USD" ? valueNative * cryptoSummary.usdCopRateNow : valueNative;
     });
     funds.forEach(f => {
       const { totalInvested } = buildFundAccounting(f.baseCapital, f.snapshots);
@@ -359,6 +360,12 @@ function useNetWorthData() {
 
     for (let i = startAbs; i <= endAbs; i++) {
       let assets = 0;
+      const relevantCryptoSnaps = cryptoSnapshots
+        .filter(s => s.year * 12 + (s.month - 1) <= i)
+        .sort((a, b) => (b.year * 12 + b.month) - (a.year * 12 + a.month));
+      const usdCopRateAtI = relevantCryptoSnaps[0]?.usdCopRate
+        ?? [...cryptoSnapshots].sort((a, b) => (a.year * 12 + a.month) - (b.year * 12 + b.month))[0]?.usdCopRate
+        ?? 0;
       dbStocks.forEach(inv => {
         const relevantTxs = (txByInv[inv.id] ?? []).filter(tx => absMonthOf(tx.transactionDate) <= i);
         if (relevantTxs.length === 0) return;
@@ -367,7 +374,8 @@ function useNetWorthData() {
         const relevantSnaps = (priceSnapByInv[inv.id] ?? [])
           .filter(s => s.year * 12 + (s.month - 1) <= i)
           .sort((a, b) => (b.year * 12 + b.month) - (a.year * 12 + a.month));
-        assets += relevantSnaps[0] ? relevantSnaps[0].pricePerShare * heldShares : costBasisHeld;
+        const valueNative = relevantSnaps[0] ? relevantSnaps[0].pricePerShare * heldShares : costBasisHeld;
+        assets += inv.currency === "USD" ? valueNative * usdCopRateAtI : valueNative;
       });
       funds.forEach(f => {
         if (i < absMonthOf(f.startDate)) return;
@@ -642,14 +650,8 @@ function InvestmentsSummarySection() {
     return map;
   }, [allPriceSnaps]);
 
-  // Stocks
-  const stocksInvested = useMemo(() =>
-    dbStocks
-      .filter(inv => txByInv[inv.id]?.length)
-      .reduce((s, inv) => s + computeStockPosition(txByInv[inv.id], stockSalesByInv[inv.id] ?? []).costBasisHeld, 0),
-    [dbStocks, txByInv, stockSalesByInv]);
-
-  // Crypto (USDW + BTC + SOL)
+  // Crypto (USDW + BTC + SOL) — computed first so its usdCopRateNow can convert USD-denominated
+  // stocks into COP below, same rate the crypto cards use.
   const cryptoSummary = useMemo(
     () => computeCryptoSummary(usdwPurchases, btcPurchases, cryptoSnapshots, solPurchases, btcSales, solSales, usdwSales),
     [usdwPurchases, btcPurchases, cryptoSnapshots, solPurchases, btcSales, solSales, usdwSales]
@@ -663,6 +665,17 @@ function InvestmentsSummarySection() {
     cryptoSettings?.sellCommission ?? 0, cryptoCurrentValue, cryptoSettings?.commissionRate ?? 0.001
   );
 
+  // Stocks — USD-denominated stocks are converted to COP at the latest crypto USD/COP rate so
+  // they can be summed alongside COP-native ones.
+  const stocksInvested = useMemo(() =>
+    dbStocks
+      .filter(inv => txByInv[inv.id]?.length)
+      .reduce((s, inv) => {
+        const cost = computeStockPosition(txByInv[inv.id], stockSalesByInv[inv.id] ?? []).costBasisHeld;
+        return s + (inv.currency === "USD" ? cost * cryptoSummary.usdCopRateNow : cost);
+      }, 0),
+    [dbStocks, txByInv, stockSalesByInv, cryptoSummary]);
+
   const stocksCurrentValue = useMemo(() => {
     const items = dbStocks.filter(inv => txByInv[inv.id]?.length);
     if (items.length === 0) return null;
@@ -671,15 +684,12 @@ function InvestmentsSummarySection() {
     for (const inv of items) {
       const { heldShares, costBasisHeld } = computeStockPosition(txByInv[inv.id], stockSalesByInv[inv.id] ?? []);
       const latest = (priceSnapByInv[inv.id] ?? []).sort((a, b) => b.year - a.year || b.month - a.month)[0];
-      if (latest) {
-        total += latest.pricePerShare * heldShares;
-      } else {
-        allHavePrice = false;
-        total += costBasisHeld;
-      }
+      const valueNative = latest ? latest.pricePerShare * heldShares : costBasisHeld;
+      if (!latest) allHavePrice = false;
+      total += inv.currency === "USD" ? valueNative * cryptoSummary.usdCopRateNow : valueNative;
     }
     return allHavePrice ? total : null;
-  }, [dbStocks, txByInv, stockSalesByInv, priceSnapByInv]);
+  }, [dbStocks, txByInv, stockSalesByInv, priceSnapByInv, cryptoSummary]);
 
   // Funds
   const fundsInvested = useMemo(() =>
@@ -723,8 +733,8 @@ function InvestmentsSummarySection() {
   const stocksSellCommission = useMemo(() =>
     dbStocks
       .filter(inv => txByInv[inv.id]?.length)
-      .reduce((s, inv) => s + inv.sellCommission, 0),
-    [dbStocks, txByInv]);
+      .reduce((s, inv) => s + (inv.currency === "USD" ? inv.sellCommission * cryptoSummary.usdCopRateNow : inv.sellCommission), 0),
+    [dbStocks, txByInv, cryptoSummary]);
 
   const hasCrypto = usdwPurchases.length > 0 || btcPurchases.length > 0 || solPurchases.length > 0;
   const totalInvested = stocksInvested + fundsInvested + cdtsInvested + (hasCrypto ? cryptoInvested : 0);
@@ -924,15 +934,20 @@ function InvestmentChartsSection() {
   const rows = useMemo(() => {
     const result: { name: string; color: string; invested: number; current: number | null }[] = [];
 
+    // Computed up front (rather than only inside the crypto block below) so USD-denominated
+    // stocks can also be converted to COP at the same rate.
+    const cryptoSummary = computeCryptoSummary(usdwPurchases, btcPurchases, cryptoSnapshots, solPurchases, btcSales, solSales, usdwSales);
+
     const hasStocks = dbStocks.some(inv => txByInv[inv.id]?.length);
     if (hasStocks) {
       let invested = 0, current = 0, allHavePrice = true;
       dbStocks.filter(inv => txByInv[inv.id]?.length).forEach(inv => {
         const { heldShares: shares, costBasisHeld: cost } = computeStockPosition(txByInv[inv.id], stockSalesByInv[inv.id] ?? []);
         const latest = (priceSnapByInv[inv.id] ?? []).sort((a, b) => b.year - a.year || b.month - a.month)[0];
-        invested += cost;
-        if (latest) current += latest.pricePerShare * shares;
-        else { allHavePrice = false; current += cost; }
+        const fx = inv.currency === "USD" ? cryptoSummary.usdCopRateNow : 1;
+        invested += cost * fx;
+        if (latest) current += latest.pricePerShare * shares * fx;
+        else { allHavePrice = false; current += cost * fx; }
       });
       result.push({ name: t("summary.stocks"), color: "#6366f1", invested, current: allHavePrice ? current : null });
     }
@@ -964,8 +979,7 @@ function InvestmentChartsSection() {
 
     if (usdwPurchases.length > 0 || btcPurchases.length > 0 || solPurchases.length > 0) {
       const invested = usdwPurchases.reduce((s, p) => s + p.copAmount, 0);
-      const summary = computeCryptoSummary(usdwPurchases, btcPurchases, cryptoSnapshots, solPurchases, btcSales, solSales, usdwSales);
-      result.push({ name: t("summary.crypto"), color: "#f59e0b", invested, current: summary.usdValueCop + summary.btcValueCop + summary.solValueCop });
+      result.push({ name: t("summary.crypto"), color: "#f59e0b", invested, current: cryptoSummary.usdValueCop + cryptoSummary.btcValueCop + cryptoSummary.solValueCop });
     }
 
     return result;
