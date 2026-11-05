@@ -26,6 +26,9 @@ import {
   useCryptoSettings,
   useUpdateCryptoSellCommission,
   useUpdateCryptoCommissionRate,
+  useUpdateUsdwSellCommission,
+  useUpdateBtcSellCommission,
+  useUpdateSolSellCommission,
   useUpdateBtcTargetGrowthPct,
   useUpdateSolTargetGrowthPct,
   type UsdwPurchase,
@@ -526,6 +529,9 @@ export default function CryptoTab() {
   const deleteSnapMut = useDeleteCryptoSnapshot();
   const updateSellCommMut = useUpdateCryptoSellCommission();
   const updateRateMut = useUpdateCryptoCommissionRate();
+  const updateUsdwSellCommMut = useUpdateUsdwSellCommission();
+  const updateBtcSellCommMut = useUpdateBtcSellCommission();
+  const updateSolSellCommMut = useUpdateSolSellCommission();
   const updateBtcTargetMut = useUpdateBtcTargetGrowthPct();
   const updateSolTargetMut = useUpdateSolTargetGrowthPct();
 
@@ -545,16 +551,17 @@ export default function CryptoTab() {
 
   // Per-asset "net if sold" — the same idea as the global one above, but applied to each
   // position's own current value, so each card shows what you'd actually walk away with after
-  // the estimated sell commission (vs. the raw unrealized gain, which ignores that cost).
-  const usdwSellCommission = Math.round(summary.usdValueCop * commissionRate);
+  // the sell commission (vs. the raw unrealized gain, which ignores that cost). Each one can be
+  // overridden manually (e.g. a known flat fee), same as the global sell commission above.
+  const usdwSellCommission = effectiveSellCommission(settings?.usdwSellCommission ?? 0, summary.usdValueCop, commissionRate);
   const usdwNetIfSoldCop = summary.usdwGainCop - usdwSellCommission;
   const usdwNetIfSoldPct = summary.usdwCostBasisCop > 0 ? (usdwNetIfSoldCop / summary.usdwCostBasisCop) * 100 : 0;
 
-  const btcSellCommission = Math.round(summary.btcValueCop * commissionRate);
+  const btcSellCommission = effectiveSellCommission(settings?.btcSellCommission ?? 0, summary.btcValueCop, commissionRate);
   const btcNetIfSoldCop = summary.btcGainCop - btcSellCommission;
   const btcNetIfSoldPct = summary.btcCostBasisCop > 0 ? (btcNetIfSoldCop / summary.btcCostBasisCop) * 100 : 0;
 
-  const solSellCommission = Math.round(summary.solValueCop * commissionRate);
+  const solSellCommission = effectiveSellCommission(settings?.solSellCommission ?? 0, summary.solValueCop, commissionRate);
   const solNetIfSoldCop = summary.solGainCop - solSellCommission;
   const solNetIfSoldPct = summary.solCostBasisCop > 0 ? (solNetIfSoldCop / summary.solCostBasisCop) * 100 : 0;
 
@@ -645,6 +652,16 @@ export default function CryptoTab() {
               : "—"}
             valueColor={summary.usdwGainCop >= 0 ? "#059669" : "#dc2626"}
           />
+          <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", fontSize: 13, alignItems: "center" }}>
+            <span style={{ color: "#6b7280" }}>
+              {t("crypto.sellCommission")} <span style={{ color: "#9ca3af" }}>{t("crypto.defaultPct", { pct: (commissionRate * 100).toFixed(2) })}</span>
+            </span>
+            <EditableCell
+              value={usdwSellCommission}
+              edited={(settings?.usdwSellCommission ?? 0) > 0}
+              onChange={v => updateUsdwSellCommMut.mutate(v)}
+            />
+          </div>
           <StatRow
             label={t("crypto.netIfSold")}
             value={summary.usdwHeldDerived > 0 || summary.hasUsdwBalanceOverride
@@ -691,6 +708,16 @@ export default function CryptoTab() {
               : "—"}
             valueColor={summary.btcGainCop >= 0 ? "#059669" : "#dc2626"}
           />
+          <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", fontSize: 13, alignItems: "center" }}>
+            <span style={{ color: "#6b7280" }}>
+              {t("crypto.sellCommission")} <span style={{ color: "#9ca3af" }}>{t("crypto.defaultPct", { pct: (commissionRate * 100).toFixed(2) })}</span>
+            </span>
+            <EditableCell
+              value={btcSellCommission}
+              edited={(settings?.btcSellCommission ?? 0) > 0}
+              onChange={v => updateBtcSellCommMut.mutate(v)}
+            />
+          </div>
           <StatRow
             label={t("crypto.netIfSold")}
             value={summary.btcCostUsdw > 0
@@ -748,6 +775,16 @@ export default function CryptoTab() {
               : "—"}
             valueColor={summary.solGainCop >= 0 ? "#059669" : "#dc2626"}
           />
+          <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", fontSize: 13, alignItems: "center" }}>
+            <span style={{ color: "#6b7280" }}>
+              {t("crypto.sellCommission")} <span style={{ color: "#9ca3af" }}>{t("crypto.defaultPct", { pct: (commissionRate * 100).toFixed(2) })}</span>
+            </span>
+            <EditableCell
+              value={solSellCommission}
+              edited={(settings?.solSellCommission ?? 0) > 0}
+              onChange={v => updateSolSellCommMut.mutate(v)}
+            />
+          </div>
           <StatRow
             label={t("crypto.netIfSold")}
             value={summary.solCostUsdw > 0

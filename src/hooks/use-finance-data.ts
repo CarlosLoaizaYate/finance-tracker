@@ -1114,6 +1114,9 @@ export function useCryptoSettings() {
   return useQuery<{
     sellCommission: number;
     commissionRate: number;
+    usdwSellCommission: number;
+    btcSellCommission: number;
+    solSellCommission: number;
     btcTargetGrowthPct: number | null;
     solTargetGrowthPct: number | null;
   }>({
@@ -1134,6 +1137,30 @@ export function useUpdateCryptoCommissionRate() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (commissionRate: number) => put("/api/crypto-settings", { commissionRate }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["crypto-settings"] }),
+  });
+}
+
+export function useUpdateUsdwSellCommission() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (usdwSellCommission: number) => put("/api/crypto-settings", { usdwSellCommission }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["crypto-settings"] }),
+  });
+}
+
+export function useUpdateBtcSellCommission() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (btcSellCommission: number) => put("/api/crypto-settings", { btcSellCommission }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["crypto-settings"] }),
+  });
+}
+
+export function useUpdateSolSellCommission() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (solSellCommission: number) => put("/api/crypto-settings", { solSellCommission }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["crypto-settings"] }),
   });
 }

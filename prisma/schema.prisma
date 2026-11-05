@@ -13,6 +13,9 @@ model User {
   createdAt           DateTime             @default(now())
   cryptoSellCommission Float               @default(0)
   cryptoCommissionRate Float               @default(0.001)
+  cryptoUsdwSellCommission Float          @default(0)
+  cryptoBtcSellCommission  Float          @default(0)
+  cryptoSolSellCommission  Float          @default(0)
   btcTargetGrowthPct  Float?
   solTargetGrowthPct  Float?
   categories          Category[]
