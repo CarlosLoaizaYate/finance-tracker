@@ -858,6 +858,7 @@ export default function CryptoTab() {
             loading={addUsdwSaleMut.isPending}
             availableUsdw={summary.usdwHeld}
             suggestedRate={summary.usdCopRateNow}
+            commissionRate={commissionRate}
           />
         )}
         {usdwSales.length === 0 ? (
@@ -956,6 +957,7 @@ export default function CryptoTab() {
             onCancel={() => setShowBtcSaleForm(false)}
             loading={addBtcSaleMut.isPending}
             availableBtc={summary.btcHeld}
+            commissionRate={commissionRate}
           />
         )}
         {btcSales.length === 0 ? (
@@ -1055,6 +1057,7 @@ export default function CryptoTab() {
             onCancel={() => setShowSolSaleForm(false)}
             loading={addSolSaleMut.isPending}
             availableSol={summary.solHeld}
+            commissionRate={commissionRate}
           />
         )}
         {solSales.length === 0 ? (
@@ -1316,26 +1319,35 @@ function UsdwPurchaseForm({ onSave, onCancel, loading, commissionRate }: {
   );
 }
 
-function UsdwSaleForm({ onSave, onCancel, loading, availableUsdw, suggestedRate }: {
+function UsdwSaleForm({ onSave, onCancel, loading, availableUsdw, suggestedRate, commissionRate }: {
   onSave: (data: { date: string; usdwAmount: number; commissionCop: number; copReceived: number; notes?: string }) => void;
   onCancel: () => void;
   loading: boolean;
   availableUsdw: number;
   suggestedRate: number;
+  commissionRate: number;
 }) {
   const { t } = useTranslation();
   const [date, setDate] = useState(todayInput());
   const [usdwAmount, setUsdwAmount] = useState("");
   const [commissionCop, setCommissionCop] = useState("0");
+  const [commissionTouched, setCommissionTouched] = useState(false);
   const [copReceived, setCopReceived] = useState("");
   const [copReceivedTouched, setCopReceivedTouched] = useState(false);
   const [notes, setNotes] = useState("");
 
   function handleUsdwAmountChange(raw: string) {
     setUsdwAmount(raw);
+    const usdw = Number(raw) || 0;
+    let nextCommission = commissionCop;
+    if (!commissionTouched) {
+      const grossCop = usdw * suggestedRate;
+      const defaultComm = Math.round(grossCop * commissionRate * 100) / 100;
+      nextCommission = defaultComm > 0 ? formatCopInput(String(defaultComm).replace(".", ",")) : "0";
+      setCommissionCop(nextCommission);
+    }
     if (!copReceivedTouched) {
-      const usdw = Number(raw) || 0;
-      const comm = parse(commissionCop);
+      const comm = parse(nextCommission);
       const suggested = Math.max(usdw * suggestedRate - comm, 0);
       setCopReceived(suggested > 0 ? formatCopInput(String(Math.round(suggested)).replace(".", ",")) : "");
     }
@@ -1363,9 +1375,9 @@ function UsdwSaleForm({ onSave, onCancel, loading, availableUsdw, suggestedRate 
           <input style={input} type="number" step="any" placeholder={t("crypto.placeholderUsdwAmount")} value={usdwAmount} onChange={e => handleUsdwAmountChange(e.target.value)} />
         </div>
         <div>
-          <span style={label}>{t("crypto.commissionCopLabel")}</span>
+          <span style={label}>{t("crypto.commissionCopLabel")} <span style={{ color: "#9ca3af" }}>{t("crypto.defaultPct", { pct: (commissionRate * 100).toFixed(2) })}</span></span>
           <input style={input} placeholder={t("crypto.placeholderZero")} value={commissionCop}
-            onChange={e => setCommissionCop(formatCopInput(e.target.value))} />
+            onChange={e => { setCommissionTouched(true); setCommissionCop(formatCopInput(e.target.value)); }} />
         </div>
         <div>
           <span style={label}>{t("crypto.copReceivedLabel")}</span>
@@ -1642,16 +1654,18 @@ function SolPurchaseForm({ onSave, onCancel, loading, commissionRate, availableU
   );
 }
 
-function BtcSaleForm({ onSave, onCancel, loading, availableBtc }: {
+function BtcSaleForm({ onSave, onCancel, loading, availableBtc, commissionRate }: {
   onSave: (data: { date: string; btcAmount: number; commissionUsdw: number; btcPriceUsdw: number; usdwReceived: number; notes?: string }) => void;
   onCancel: () => void;
   loading: boolean;
   availableBtc: number;
+  commissionRate: number;
 }) {
   const { t } = useTranslation();
   const [date, setDate] = useState(todayInput());
   const [btcAmount, setBtcAmount] = useState("");
   const [commissionUsdw, setCommissionUsdw] = useState("0");
+  const [commissionTouched, setCommissionTouched] = useState(false);
   const [btcPriceUsdw, setBtcPriceUsdw] = useState("");
   const [usdwReceived, setUsdwReceived] = useState("");
   // Tracks which of price/received the user is driving, so the other one is the derived field.
@@ -1663,7 +1677,13 @@ function BtcSaleForm({ onSave, onCancel, loading, availableBtc }: {
 
   function handleAmountChange(raw: string) {
     setBtcAmount(raw);
-    const comm = Number(commissionUsdw) || 0;
+    let nextCommission = commissionUsdw;
+    if (!commissionTouched) {
+      const gross = grossUsdw(raw, btcPriceUsdw);
+      nextCommission = gross > 0 ? (gross * commissionRate).toFixed(4) : "0";
+      setCommissionUsdw(nextCommission);
+    }
+    const comm = Number(nextCommission) || 0;
     if (lastEdited === "price") {
       const gross = grossUsdw(raw, btcPriceUsdw);
       if (gross > 0) setUsdwReceived(Math.max(gross - comm, 0).toFixed(2));
@@ -1675,6 +1695,7 @@ function BtcSaleForm({ onSave, onCancel, loading, availableBtc }: {
   }
 
   function handleCommissionChange(raw: string) {
+    setCommissionTouched(true);
     setCommissionUsdw(raw);
     const comm = Number(raw) || 0;
     if (lastEdited === "price") {
@@ -1690,7 +1711,13 @@ function BtcSaleForm({ onSave, onCancel, loading, availableBtc }: {
   function handlePriceChange(raw: string) {
     setBtcPriceUsdw(raw);
     setLastEdited("price");
-    const comm = Number(commissionUsdw) || 0;
+    let nextCommission = commissionUsdw;
+    if (!commissionTouched) {
+      const gross = grossUsdw(btcAmount, raw);
+      nextCommission = gross > 0 ? (gross * commissionRate).toFixed(4) : "0";
+      setCommissionUsdw(nextCommission);
+    }
+    const comm = Number(nextCommission) || 0;
     const gross = grossUsdw(btcAmount, raw);
     if (gross > 0) setUsdwReceived(Math.max(gross - comm, 0).toFixed(2));
   }
@@ -1727,7 +1754,7 @@ function BtcSaleForm({ onSave, onCancel, loading, availableBtc }: {
           <input style={input} type="number" step="any" placeholder={t("crypto.placeholderBtcReceived")} value={btcAmount} onChange={e => handleAmountChange(e.target.value)} />
         </div>
         <div>
-          <span style={label}>{t("crypto.commissionUsdwLabel")}</span>
+          <span style={label}>{t("crypto.commissionUsdwLabel")} <span style={{ color: "#9ca3af" }}>{t("crypto.defaultPct", { pct: (commissionRate * 100).toFixed(2) })}</span></span>
           <input style={input} type="number" step="any" placeholder={t("crypto.placeholderZero")} value={commissionUsdw} onChange={e => handleCommissionChange(e.target.value)} />
         </div>
         <div>
@@ -1756,16 +1783,18 @@ function BtcSaleForm({ onSave, onCancel, loading, availableBtc }: {
   );
 }
 
-function SolSaleForm({ onSave, onCancel, loading, availableSol }: {
+function SolSaleForm({ onSave, onCancel, loading, availableSol, commissionRate }: {
   onSave: (data: { date: string; solAmount: number; commissionUsdw: number; solPriceUsdw: number; usdwReceived: number; notes?: string }) => void;
   onCancel: () => void;
   loading: boolean;
   availableSol: number;
+  commissionRate: number;
 }) {
   const { t } = useTranslation();
   const [date, setDate] = useState(todayInput());
   const [solAmount, setSolAmount] = useState("");
   const [commissionUsdw, setCommissionUsdw] = useState("0");
+  const [commissionTouched, setCommissionTouched] = useState(false);
   const [solPriceUsdw, setSolPriceUsdw] = useState("");
   const [usdwReceived, setUsdwReceived] = useState("");
   const [lastEdited, setLastEdited] = useState<"price" | "received" | null>(null);
@@ -1776,7 +1805,13 @@ function SolSaleForm({ onSave, onCancel, loading, availableSol }: {
 
   function handleAmountChange(raw: string) {
     setSolAmount(raw);
-    const comm = Number(commissionUsdw) || 0;
+    let nextCommission = commissionUsdw;
+    if (!commissionTouched) {
+      const gross = grossUsdw(raw, solPriceUsdw);
+      nextCommission = gross > 0 ? (gross * commissionRate).toFixed(4) : "0";
+      setCommissionUsdw(nextCommission);
+    }
+    const comm = Number(nextCommission) || 0;
     if (lastEdited === "price") {
       const gross = grossUsdw(raw, solPriceUsdw);
       if (gross > 0) setUsdwReceived(Math.max(gross - comm, 0).toFixed(2));
@@ -1788,6 +1823,7 @@ function SolSaleForm({ onSave, onCancel, loading, availableSol }: {
   }
 
   function handleCommissionChange(raw: string) {
+    setCommissionTouched(true);
     setCommissionUsdw(raw);
     const comm = Number(raw) || 0;
     if (lastEdited === "price") {
@@ -1803,7 +1839,13 @@ function SolSaleForm({ onSave, onCancel, loading, availableSol }: {
   function handlePriceChange(raw: string) {
     setSolPriceUsdw(raw);
     setLastEdited("price");
-    const comm = Number(commissionUsdw) || 0;
+    let nextCommission = commissionUsdw;
+    if (!commissionTouched) {
+      const gross = grossUsdw(solAmount, raw);
+      nextCommission = gross > 0 ? (gross * commissionRate).toFixed(4) : "0";
+      setCommissionUsdw(nextCommission);
+    }
+    const comm = Number(nextCommission) || 0;
     const gross = grossUsdw(solAmount, raw);
     if (gross > 0) setUsdwReceived(Math.max(gross - comm, 0).toFixed(2));
   }
@@ -1840,7 +1882,7 @@ function SolSaleForm({ onSave, onCancel, loading, availableSol }: {
           <input style={input} type="number" step="any" placeholder={t("crypto.placeholderSolReceived")} value={solAmount} onChange={e => handleAmountChange(e.target.value)} />
         </div>
         <div>
-          <span style={label}>{t("crypto.commissionUsdwLabel")}</span>
+          <span style={label}>{t("crypto.commissionUsdwLabel")} <span style={{ color: "#9ca3af" }}>{t("crypto.defaultPct", { pct: (commissionRate * 100).toFixed(2) })}</span></span>
           <input style={input} type="number" step="any" placeholder={t("crypto.placeholderZero")} value={commissionUsdw} onChange={e => handleCommissionChange(e.target.value)} />
         </div>
         <div>
